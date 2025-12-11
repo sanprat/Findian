@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+    container_name: pystock_backend
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8005:8000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://user:password@db:3306/pystock
+      - REDIS_URL=redis://redis:6379/0
+      - CHUTES_API_TOKEN=${CHUTES_API_TOKEN}
+      - FINVASIA_USER_ID=${FINVASIA_USER_ID}
+      - FINVASIA_PASSWORD=${FINVASIA_PASSWORD}
+      - FINVASIA_TOKEN=${FINVASIA_TOKEN}
+      - FINVASIA_TOTP_KEY=${FINVASIA_TOTP_KEY}
+      - FINVASIA_VENDOR_CODE=${FINVASIA_VENDOR_CODE}
+      - FINVASIA_IMEI=${FINVASIA_IMEI}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  bot:
+    build: 
+      context: ./bot
+    container_name: pystock_bot
+    volumes:
+      - ./bot:/app
+    environment:
+      - BACKEND_API_URL=http://backend:8000
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      - backend
+
+  db:
+    image: mysql:8.0
+    container_name: pystock_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: pystock
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: pystock_redis
+    ports:
+      - "6380:6379"
+
+volumes:
+  mysql_data:
+  redis_data:

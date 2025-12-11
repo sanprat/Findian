@@ -1,0 +1,16 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+httpx
+NorenRestApiPy
+pyotp
+requests
+websocket-client
+redis==5.0.1
+sqlalchemy==2.0.27
+pymysql
+cryptography
+asyncpg==0.29.0
+python-dateutil
+python-dotenv==1.0.1
+pandas==2.2.0
+numpy==1.26.4
