@@ -10,16 +10,218 @@ from app.core.ai import AIAlertInterpreter
 from app.db.base import Base, engine, get_db
 from app.db.models import Alert
 from app.core.market_data import MarketDataService
+from app.core.scanner import MarketScannerService
+from app.core.scheduler import AlertMonitor
 
 # Initialize Database Tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Intelligent Alert System")
 market_data = MarketDataService()
+scanner_service = MarketScannerService(market_data)
+monitor_service = AlertMonitor()
+
+@app.on_event("startup")
+async def startup_event():
+    # Start Scanner Loop
+    scanner_service.start()
+    # Start Alert Monitor
+    await monitor_service.start()
+
+
+@app.get("/api/quote/{symbol}")
+async def get_quote(symbol: str):
+    """Fetches live quote for a symbol."""
+    quote = market_data.get_quote(symbol.upper())
+    if quote:
+        return {"success": True, "data": quote}
+    return {"success": False, "message": "Symbol not found or Market Data error."}
+
 
 class AlertQuery(BaseModel):
     user_id: str
     query: str
+
+@app.post("/api/screener/custom")
+async def custom_screen(query_payload: AlertQuery): # Re-using AlertQuery {user_id, query}
+    """
+    1. Parse NL Query -> JSON Filters
+    2. Fetch Redis Snapshot
+    3. Filter Data
+    """
+    user_query = query_payload.query
+    
+    # 1. AI Parse
+    ai = AIAlertInterpreter()
+    parsed = await ai.parse_screener_query(user_query)
+    
+    if "error" in parsed:
+        return {"success": False, "message": "Could not understand query."}
+        
+    filters = parsed.get("filters", [])
+    if not filters:
+        return {"success": False, "message": "No valid criteria found."}
+        
+    # 2. Fetch Data
+    symbols = scanner_service.symbols
+    pipe = scanner_service.r.pipeline()
+    for sym in symbols:
+        pipe.hgetall(f"stock:{sym}")
+    data_list = pipe.execute()
+    
+    results = []
+    
+    # 3. Apply Filters
+    for item in data_list:
+        if not item: continue
+        
+        try:
+            # Convert Redis Map to Float
+            ltp = float(item.get("ltp", 0))
+            change = float(item.get("change_percent", 0))
+            volume = float(item.get("volume", 0))
+            rsi = float(item.get("rsi", 50))
+            
+            match = True
+            for f in filters:
+                field = f["field"]
+                op = f["op"]
+                val = f["value"]
+                
+                # Check mapping (ltp, volume, etc)
+                data_val = 0
+                if field == "ltp": data_val = ltp
+                elif field == "change_pct": data_val = change
+                elif field == "volume": data_val = volume
+                elif field == "rsi": data_val = rsi
+                
+                if op == "gt" and not (data_val > val): match = False
+                elif op == "lt" and not (data_val < val): match = False
+                elif op == "eq" and not (data_val == val): match = False
+            
+            if match:
+                 results.append({
+                    "symbol": item.get("symbol"),
+                    "ltp": ltp,
+                    "change_percent": change,
+                    "timestamp": item.get("timestamp", "Just now"),
+                    "match_reason": "AI Match"
+                })
+        except Exception as e:
+            continue
+            
+    return {"success": True, "count": len(results), "data": results, "filters_used": filters}
+
+@app.get("/api/screener/prebuilt")
+async def prebuilt_screen(scan_type: str):
+    """
+    Execute popular pre-defined scans.
+    """
+    
+    # Define Criteria
+    # 1. Breakout: > 4% Change
+    # 2. Volume: NOT IMPLEMENTED FULLY (needs avg vol), using high raw volume for now.
+    # 3. Value: RSI < 35
+    
+    symbols = scanner_service.symbols
+    pipe = scanner_service.r.pipeline()
+    for sym in symbols:
+        pipe.hgetall(f"stock:{sym}")
+    data_list = pipe.execute()
+    
+    results = []
+    for item in data_list:
+        if not item: continue
+        try:
+            ltp = float(item.get("ltp", 0))
+            change = float(item.get("change_percent", 0))
+            volume = float(item.get("volume", 0))
+            rsi = float(item.get("rsi", 50))
+            
+            match = False
+            
+            if scan_type == "scan_breakout":
+                if change > 4.0: match = True
+                
+            elif scan_type == "scan_volume":
+                if volume > 1000000: match = True # Placeholder for Volume Shock
+                
+            elif scan_type == "scan_value":
+                if rsi < 35.0: match = True
+                
+            if match:
+                # Clean Data types for JSON response
+                # Clean Data types for JSON response
+                cleaned_item = {
+                    "symbol": item.get("symbol"),
+                    "ltp": ltp,
+                    "change_percent": change,
+                    "volume": int(volume),
+                    "rsi": rsi,
+                    "timestamp": item.get("timestamp", "Just now")
+                }
+                results.append(cleaned_item)
+                
+        except:
+            continue
+            
+    # Sort results
+    if scan_type == "scan_breakout":
+        results.sort(key=lambda x: float(x.get("change_percent", 0)), reverse=True)
+    elif scan_type == "scan_value":
+        results.sort(key=lambda x: float(x.get("rsi", 50)))
+        
+    return {"success": True, "count": len(results), "data": results}
+    
+
+
+class SaveScanRequest(BaseModel):
+    user_id: str
+    name: str
+    query: str
+
+@app.post("/api/screener/save")
+def save_scan(payload: SaveScanRequest, db: Session = Depends(get_db)):
+    """Save a custom query."""
+    try:
+        from app.db.models import SavedScan
+        new_scan = SavedScan(
+            user_id=int(payload.user_id),
+            name=payload.name,
+            query=payload.query
+        )
+        db.add(new_scan)
+        db.commit()
+        return {"success": True, "message": f"Saved '{payload.name}'!"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.get("/api/screener/saved")
+def list_saved_scans(user_id: str, db: Session = Depends(get_db)):
+    """List saved scans for a user."""
+    try:
+        from app.db.models import SavedScan
+        scans = db.query(SavedScan).filter(SavedScan.user_id == int(user_id)).all()
+        return {
+            "success": True, 
+            "data": [{"id": s.id, "name": s.name, "query": s.query} for s in scans]
+        }
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+@app.delete("/api/screener/saved/{scan_id}")
+def delete_saved_scan(scan_id: int, user_id: str, db: Session = Depends(get_db)):
+    """Delete a saved scan."""
+    try:
+        from app.db.models import SavedScan
+        db.query(SavedScan).filter(
+            SavedScan.id == scan_id,
+            SavedScan.user_id == int(user_id)
+        ).delete()
+        db.commit()
+        return {"success": True, "message": "Scan deleted."}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
 
 class AlertResponse(BaseModel):
     success: bool
@@ -28,6 +230,8 @@ class AlertResponse(BaseModel):
     question: Optional[str] = None
     missing_info: Optional[List[str]] = None
     message: Optional[str] = None
+    intent: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
 
 @app.on_event("startup")
 async def startup_event():
@@ -36,6 +240,8 @@ async def startup_event():
     logger.info("Attempting Finvasia Login...")
     if market_data.login():
         logger.info("✅ Connected to Market Data Feed")
+        # Start Scanner Loop
+        scanner_service.start()
     else:
         logger.warning("⚠️ Failed to connect to Market Data Feed")
 
@@ -218,7 +424,17 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
             return {
                 "success": True,
                 "status": "VIEW_PORTFOLIO_REQ",
+                "intent": "VIEW_PORTFOLIO",
                 "message": "Fetching your portfolio..."
+            }
+            
+        # --- HANDLE CHECK PRICE ---
+        elif intent == "CHECK_PRICE":
+            return {
+                "success": True,
+                "status": "CONFIRMED",
+                "intent": "CHECK_PRICE",
+                "data": result.get("data")
             }
 
     if result.get("status") == "REJECTED":
@@ -237,15 +453,86 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
 @app.get("/api/portfolio/list")
 def get_portfolio(user_id: int, db: Session = Depends(get_db)):
     from app.db.models import Portfolio
-    holdings = db.query(Portfolio).filter(Portfolio.user_id == user_id).all()
+    
+    # Fetch all raw entries
+    raw_holdings = db.query(Portfolio).filter(Portfolio.user_id == user_id).all()
+    
+    # Aggregate by Symbol
+    portfolio_map = {}
+    
+    for h in raw_holdings:
+        sym = h.symbol
+        if sym not in portfolio_map:
+            portfolio_map[sym] = {
+                "symbol": sym,
+                "quantity": 0,
+                "total_invested": 0.0,
+                "entries": []
+            }
+        
+        portfolio_map[sym]["quantity"] += h.quantity
+        portfolio_map[sym]["total_invested"] += (h.quantity * h.avg_price)
+        portfolio_map[sym]["entries"].append({
+            "qty": h.quantity, 
+            "price": h.avg_price, 
+            "date": h.purchase_date
+        })
+
+    # Enrich with Real-Time Data
+    enriched_holdings = []
+    total_portfolio_value = 0.0
+    total_invested_value = 0.0
+
+    for sym, data in portfolio_map.items():
+        qty = data["quantity"]
+        invested = data["total_invested"]
+        avg_price = invested / qty if qty > 0 else 0.0
+        
+        # Fetch LTP
+        quote = market_data_service.get_quote(sym)
+        ltp = quote.get("ltp") if quote else avg_price # Fallback to avg_price if offline
+        prev_close = quote.get("close", ltp) if quote else ltp
+        high = quote.get("high", 0) if quote else 0
+        low = quote.get("low", 0) if quote else 0
+
+        current_val = qty * ltp
+        pnl = current_val - invested
+        pnl_pct = (pnl / invested * 100) if invested > 0 else 0.0
+        
+        # Day Stats
+        day_change = ltp - prev_close
+        day_change_pct = (day_change / prev_close * 100) if prev_close > 0 else 0.0
+        day_pnl = day_change * qty
+
+        total_portfolio_value += current_val
+        total_invested_value += invested
+
+        enriched_holdings.append({
+            "symbol": sym,
+            "quantity": qty,
+            "avg_price": round(avg_price, 2),
+            "ltp": ltp,
+            "current_value": round(current_val, 2),
+            "pnl": round(pnl, 2),
+            "pnl_percent": round(pnl_pct, 2),
+            "invested": round(invested, 2),
+            "day_change": round(day_change, 2),
+            "day_change_percent": round(day_change_pct, 2),
+            "day_pnl": round(day_pnl, 2),
+            "high": high,
+            "low": low
+        })
+
+    # Summary Stats
+    total_pnl = total_portfolio_value - total_invested_value
+    total_pnl_pct = (total_pnl / total_invested_value * 100) if total_invested_value > 0 else 0.0
+
     return {
         "user_id": user_id,
-        "holdings": [
-            {
-                "symbol": h.symbol,
-                "quantity": h.quantity,
-                "avg_price": h.avg_price,
-                "date": h.purchase_date
-            } for h in holdings
-        ]
+        "summary": {
+            "total_value": round(total_portfolio_value, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_percent": round(total_pnl_pct, 2)
+        },
+        "holdings": enriched_holdings
     }

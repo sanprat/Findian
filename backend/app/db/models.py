@@ -24,3 +24,12 @@ class Portfolio(Base):
     avg_price = Column(Float)                # 3000.0
     purchase_date = Column(DateTime, default=datetime.utcnow)
     # For Auto-Tracking later, we might need broker_id, but keeping simple for Manual now
+
+class SavedScan(Base):
+    __tablename__ = "saved_scans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(BigInteger, index=True)
+    name = Column(String(100))
+    query = Column(String(500))  # The natural language query or JSON config
+    created_at = Column(DateTime, default=datetime.utcnow)
