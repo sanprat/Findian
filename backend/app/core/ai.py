@@ -10,18 +10,70 @@ class AIAlertInterpreter:
     def __init__(self):
         self.api_token = os.getenv("CHUTES_API_TOKEN")
         self.base_url = "https://llm.chutes.ai/v1/chat/completions"
-        self.model = "openai/gpt-oss-20b"
+        self.models = [
+            "openai/gpt-oss-20b",
+            "zai-org/GLM-4.5-Air",
+            "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B"
+        ]
+
+    async def _call_with_fallback(self, messages: list, temperature: float = 0.1) -> Dict[str, Any]:
+        """
+        Tries models in order. Returns the JSON parsed response of the first success.
+        """
+        if not self.api_token:
+            return {"status": "ERROR", "message": "CHUTES_API_TOKEN not configured"}
+
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Content-Type": "application/json"
+        }
+
+        last_error = None
+
+        for model in self.models:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "stream": False
+            }
+            
+            try:
+                # logger.info(f"🤖 Attempting AI call with model: {model}")
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        self.base_url, 
+                        json=payload, 
+                        headers=headers, 
+                        timeout=30.0
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+                    content = result['choices'][0]['message']['content']
+                    
+                    # Extract JSON from markdown
+                    if "```" in content:
+                        start = content.find('{')
+                        end = content.rfind('}') + 1
+                        json_str = content[start:end]
+                    else:
+                        json_str = content
+                    
+                    return json.loads(json_str)
+
+            except Exception as e:
+                logger.warning(f"⚠️ AI Model {model} failed: {e}. Trying next...")
+                last_error = e
+                continue
+        
+        # If all failed
+        logger.error(f"❌ All AI models failed. Last error: {last_error}")
+        return {"status": "ERROR", "message": "AI Service Unavailable"}
 
     async def interpret(self, query: str) -> Dict[str, Any]:
         """
-        Interprets the user query using Chutes AI.
+        Interprets the user query using Chutes AI (with Fallback).
         """
-        if not self.api_token:
-            return {
-                "status": "ERROR",
-                "message": "CHUTES_API_TOKEN not configured"
-            }
-
         system_prompt = """You are an expert stock assistant.
 Your goal is to classify the user's INTENT and return a structured JSON.
 
@@ -72,67 +124,18 @@ SAFETY PROTOCOL:
 - If user asks: "What should I buy?", "Is TCS good?", "Predict the market"
 - RETURN: { "status": "REJECTED", "message": "⚠️ I am an AI Tool, not an Advisor. I cannot provide investment recommendations." }
 """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query}
+        ]
         
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query}
-            ],
-            "temperature": 0.1, # Low temperature for consistent JSON
-            "stream": False
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.api_token}",
-            "Content-Type": "application/json"
-        }
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.base_url, 
-                    json=payload, 
-                    headers=headers, 
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                content = result['choices'][0]['message']['content']
-                
-                # Extract JSON from markdown code blocks if present
-                if "```" in content:
-                    # Find the first { and last }
-                    start = content.find('{')
-                    end = content.rfind('}') + 1
-                    json_str = content[start:end]
-                else:
-                    json_str = content
-
-                return json.loads(json_str)
-
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode AI response: {content}")
-            return {
-                "status": "ERROR",
-                "message": "AI returned invalid JSON"
-            }
-        except Exception as e:
-            logger.error(f"AI Error: {str(e)}")
-            return {
-                "status": "ERROR",
-                "message": f"Thinking Error: {str(e)}"
-            }
+        return await self._call_with_fallback(messages)
 
     async def parse_screener_query(self, query: str) -> Dict[str, Any]:
         """
         Interprets natural language screening criteria.
         Returns: { "filters": [ {field, op, value}, ... ] }
         """
-        if not self.api_token:
-            return {"error": "No AI Token"}
-
         system_prompt = """You are a Stock Screener AI.
 Convert the user's Natural Language query into a JSON filter list.
 
@@ -163,42 +166,18 @@ EXAMPLES:
 
 OUTPUT JSON ONLY.
 """
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query}
-            ],
-            "temperature": 0.1,
-            "stream": False
-        }
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query}
+        ]
         
-        headers = {
-            "Authorization": f"Bearer {self.api_token}",
-            "Content-Type": "application/json"
-        }
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.base_url, json=payload, headers=headers, timeout=30.0
-                )
-                response.raise_for_status()
-                result = response.json()
-                content = result['choices'][0]['message']['content']
-                
-                # Cleanup markdown
-                if "```" in content:
-                    start = content.find('{')
-                    end = content.rfind('}') + 1
-                    json_str = content[start:end]
-                else:
-                    json_str = content
-                    
-                return json.loads(json_str)
-        except Exception as e:
-            logger.error(f"Screener AI Error: {e}")
-            return {"error": "Failed to parse query"}
+        result = await self._call_with_fallback(messages)
+        
+        # Standardize error in parsing
+        if result.get("status") == "ERROR":
+             return {"error": "Failed to parse query"}
+             
+        return result
 
     def _sanitize_response(self, text: str) -> str:
         """

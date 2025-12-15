@@ -25,14 +25,68 @@ class MarketScannerService:
         ]
         self.is_running = False
         self._thread = None
+        self.avg_volumes = {} # Cache for baselines
 
     def start(self):
         """Starts the scanner loop in a separate thread."""
         if not self.is_running:
             self.is_running = True
+            
+            # Pre-fetch baselines in background (don't block heavily)
+            threading.Thread(target=self._fetch_historical_baselines, daemon=True).start()
+            
             self._thread = threading.Thread(target=self._snapshot_loop, daemon=True)
             self._thread.start()
             logger.info("🚀 Market Scanner Thread Started")
+
+    def _fetch_historical_baselines(self):
+        """
+        Fetches 10-day average volume for all symbols using yfinance.
+        Runs once on startup.
+        """
+        logger.info("📊 Fetching historical baselines (Avg Volume) via yfinance...")
+        import yfinance as yf
+        
+        try:
+            # Batch Optimized: Download all at once
+            tickers_list = [f"{sym}.NS" for sym in self.symbols]
+            tickers_str = " ".join(tickers_list)
+            
+            logger.info(f"Downloading batch history for {len(tickers_list)} stocks...")
+            # threads=True enables parallel fetching
+            data = yf.download(tickers_str, period="1mo", threads=True, group_by='ticker')
+            
+            count = 0
+            for sym in self.symbols:
+                try:
+                    # yfinance returns MultiIndex DFs when grouped by ticker
+                    try:
+                        hist = data[f"{sym}.NS"]
+                    except KeyError:
+                        # Fallback if ticker lookup fails in batch result
+                        self.avg_volumes[sym] = 500000
+                        continue
+
+                    if not hist.empty:
+                        # Drop NaN rows (common in batch fetch for missing days)
+                        hist = hist.dropna()
+                        if not hist.empty:
+                             # avg volume of last 10 days
+                             recent = hist.tail(10)
+                             avg_vol = recent['Volume'].mean()
+                             self.avg_volumes[sym] = avg_vol
+                             count += 1
+                        else:
+                             self.avg_volumes[sym] = 500000
+                    else:
+                        self.avg_volumes[sym] = 500000
+                except Exception as e:
+                     self.avg_volumes[sym] = 500000 
+            
+            logger.info(f"✅ Historical Baselines Loaded for {count} stocks (Batch Mode).")
+
+        except Exception as e:
+            logger.error(f"Batch Baseline Fetch Error: {e}")
 
     def _snapshot_loop(self):
         """
@@ -49,7 +103,7 @@ class MarketScannerService:
                     data_to_store = None
                     
                     try:
-                        # 1. Try Fetching Real Data
+                        # 1. Try Fetching Real Data (Hybrid Engine: Finvasia -> Yahoo)
                         quote = self.md.get_quote(sym)
                         if quote:
                             ltp = quote['ltp']
@@ -59,53 +113,40 @@ class MarketScannerService:
                             data_to_store = {
                                 "symbol": sym,
                                 "ltp": ltp,
-                                "change_percent": change_pct,
+                                "change_percent": round(change_pct, 2),
                                 "volume": quote.get('volume', 0),
                                 "high": quote.get('high', 0),
                                 "low": quote.get('low', 0),
-                                "prev_close": prev_close
+                                "prev_close": prev_close,
+                                "avg_volume": int(self.avg_volumes.get(sym, 0)) # Inject Baseline
                             }
                     except Exception as e:
                         logger.warning(f"Real Data Fetch Failed for {sym}: {e}")
                         
-                    # 2. FAILOVER: Generate Mock Data if Real Data failed
+                    # 2. FAILOVER: Mock Data if MD completely fails (Should not happen with Hybrid engine often)
                     if not data_to_store:
+                         # Keeping minimal mock for absolute worst case
                          import random
-                         # Generate realistic-looking mock data
-                         base_price = random.uniform(500, 3000)
-                         change_pct = random.uniform(-6, 6) # Range to trigger breakpoints
-                         ltp = base_price * (1 + change_pct/100)
-                         volume = random.randint(50000, 5000000)
-                         
-                         # Force some "Volume Shockers" (>1M) for testing
-                         if random.random() > 0.8: volume = random.randint(1500000, 6000000)
-                         
-                         # Force some "Breakouts" (>4%)
-                         if random.random() > 0.8: change_pct = random.uniform(4.5, 8.0)
-                         
+                         base = 1000
                          data_to_store = {
                             "symbol": sym,
-                             "ltp": round(ltp, 2),
-                             "change_percent": round(change_pct, 2),
-                             "volume": volume,
-                             "high": round(ltp * 1.02, 2),
-                             "low": round(ltp * 0.98, 2),
-                             "prev_close": round(base_price, 2)
+                            "ltp": 1000,
+                            "change_percent": 0.0,
+                            "volume": 0,
+                            "avg_volume": 500000,
+                            "timestamp": "Simulated"
                          }
 
                     # 3. Add Indicators (RSI/SMA) & Store
                     if data_to_store:
                         import random
-                        # Consistent Mock Indicators
+                        # Consistent Mock Indicators (can be replaced by ta-lib later)
                         mock_rsi = random.uniform(25, 75)
                         # Bias RSI based on price change for realism
                         if data_to_store["change_percent"] > 3: mock_rsi = random.uniform(65, 85)
                         if data_to_store["change_percent"] < -3: mock_rsi = random.uniform(15, 35)
                         
-                        mock_sma = data_to_store["ltp"] * random.uniform(0.95, 1.05)
-                        
                         data_to_store["rsi"] = round(mock_rsi, 2)
-                        data_to_store["sma50"] = round(mock_sma, 2)
                         
                         from datetime import datetime
                         data_to_store["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -144,7 +144,9 @@ async def prebuilt_screen(scan_type: str):
                 if change > 4.0: match = True
                 
             elif scan_type == "scan_volume":
-                if volume > 1000000: match = True # Placeholder for Volume Shock
+                avg_vol = float(item.get("avg_volume", 1_000_000))
+                # Logic: Volume > 2.5x Average Volume
+                if volume > (avg_vol * 2.5): match = True
                 
             elif scan_type == "scan_value":
                 if rsi < 35.0: match = True
@@ -536,3 +538,71 @@ def get_portfolio(user_id: int, db: Session = Depends(get_db)):
         },
         "holdings": enriched_holdings
     }
+
+@app.get("/api/portfolio/performance")
+def get_portfolio_performance(user_id: int, db: Session = Depends(get_db)):
+    """
+    Returns the daily total portfolio value for the last 30 days.
+    (MVP Assumption: Current holdings were held for the entire period)
+    """
+    from app.db.models import Portfolio
+    import pandas as pd
+    
+    # 1. Fetch current holdings
+    holdings = db.query(Portfolio).filter(Portfolio.user_id == user_id).all()
+    if not holdings:
+        return {"dates": [], "values": []}
+
+    # Aggregate quantities by symbol
+    portfolio_qty = {}
+    for h in holdings:
+        portfolio_qty[h.symbol] = portfolio_qty.get(h.symbol, 0) + h.quantity
+
+    # 2. Batch Fetch History (Optimized with yf.download)
+    symbols = list(portfolio_qty.keys())
+    if not symbols:
+        return {"dates": [], "values": []}
+
+    try:
+        import yfinance as yf
+        tickers_str = " ".join([f"{s}.NS" for s in symbols])
+        # Fetch 1mo history
+        data = yf.download(tickers_str, period="1mo", threads=True, group_by='ticker')
+        
+        # 3. Aggregate Daily Values
+        # Structure: Date -> Total Value
+        daily_totals = {}
+        
+        # Iterate over each stock to sum up value
+        for sym in symbols:
+            qty = portfolio_qty[sym]
+            try:
+                # Handle single vs multiple ticker return structure
+                if len(symbols) == 1:
+                    hist = data
+                else:
+                    hist = data[f"{sym}.NS"]
+                
+                if not hist.empty:
+                    # Normalized Closes
+                    closes = hist['Close']
+                    for date, price in closes.items():
+                        date_str = date.strftime("%Y-%m-%d")
+                        value = float(price) * qty
+                        daily_totals[date_str] = daily_totals.get(date_str, 0.0) + value
+            except Exception as e:
+                # print(f"Error processing history for {sym}: {e}")
+                pass
+
+        # 4. Format for Chart
+        sorted_dates = sorted(daily_totals.keys())
+        result_values = [round(daily_totals[d], 2) for d in sorted_dates]
+        
+        return {
+            "dates": sorted_dates,
+            "values": result_values
+        }
+
+    except Exception as e:
+        print(f"Performance API Error: {e}")
+        return {"dates": [], "values": []}

@@ -4,6 +4,9 @@
 memory_report*.md
 agent_session*.log
 
+# Claude Code configuration
+.claude/
+
 # Python
 __pycache__/
 *.py[cod]

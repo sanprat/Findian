@@ -158,3 +158,33 @@ class MarketDataService:
              "open": round(base * 1.005, 2),
              "status": "SIMULATED"
         }
+
+    def get_historical_data(self, symbol: str, period: str = "1mo") -> list:
+        """
+        Fetch historical close prices for a symbol.
+        STRICTLY uses yfinance (as Finvasia does not provide history in MVP tier).
+        Returns list of dicts: [{'date': 'YYYY-MM-DD', 'close': 123.45}, ...]
+        """
+        try:
+            import yfinance as yf
+            # Handle Index symbols or NSE suffix
+            yf_symbol = f"{symbol}.NS" if not symbol.endswith((".NS", ".BO")) else symbol
+            
+            ticker = yf.Ticker(yf_symbol)
+            hist = ticker.history(period=period)
+            
+            if hist.empty:
+                return []
+            
+            results = []
+            for date, row in hist.iterrows():
+                results.append({
+                    "date": date.strftime("%Y-%m-%d"),
+                    "close": float(row["Close"])
+                })
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Historical Data Fetch Error for {symbol}: {e}")
+            return []
