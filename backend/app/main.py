@@ -489,7 +489,7 @@ def get_portfolio(user_id: int, db: Session = Depends(get_db)):
         avg_price = invested / qty if qty > 0 else 0.0
         
         # Fetch LTP
-        quote = market_data_service.get_quote(sym)
+        quote = market_data.get_quote(sym)
         ltp = quote.get("ltp") if quote else avg_price # Fallback to avg_price if offline
         prev_close = quote.get("close", ltp) if quote else ltp
         high = quote.get("high", 0) if quote else 0
