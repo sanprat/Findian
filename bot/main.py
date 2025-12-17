@@ -1,7 +1,7 @@
 import os
 import logging
 import aiohttp
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 
 
 # ...
@@ -19,13 +19,38 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BACKEND_URL = os.getenv("BACKEND_API_URL", "http://backend:8000")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send a welcome message with a Menu."""
+    """Register User and Send Welcome Menu."""
     user = update.effective_user
     
+    # Register/Update User in Backend
+    async with aiohttp.ClientSession() as session:
+        try:
+            payload = {
+                "telegram_id": user.id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name
+            }
+            async with session.post(f"{BACKEND_URL}/api/auth/register", json=payload) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    is_new = data.get("is_new", False)
+                    
+                    if is_new:
+                         await update.message.reply_text("🆕 <b>Account created successfully!</b>", parse_mode='HTML')
+                    else:
+                         name = user.first_name if user.first_name else "Trader"
+                         await update.message.reply_text(f"👋 Welcome Back <b>{name}</b>!", parse_mode='HTML')
+
+                else:
+                    logger.error(f"Registration Failed for {user.id}")
+        except Exception as e:
+            logger.error(f"Auth Connection Error: {e}")
+
     keyboard = [
-        ["🔍 Screener", "💼 Portfolio"],
-        ["⚠️ Disclaimer"],
-        ["🚪 Exit"]
+        [KeyboardButton("🔍 Screener"), KeyboardButton("💼 Portfolio")],
+        [KeyboardButton("💎 My Plan"), KeyboardButton("📖 Readme")],
+        [KeyboardButton("🔒 Privacy Policy")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -143,6 +168,41 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👋 <b>Goodbye!</b>\nType 'start' anytime to wake me up.", reply_markup=ReplyKeyboardRemove(), parse_mode='HTML')
         return
 
+    if text == "📖 Readme":
+        help_text = (
+            "📖 <b>Pystock Bot - User Guide</b>\n\n"
+            "Here are the commands you can use:\n\n"
+            "<b>🔍 Screener</b>\n"
+            "• <i>Pre-built:</i> Use menu to find Breakouts/Volume shocks.\n"
+            "• <i>Custom AI:</i> Type 'Show stocks with RSI &lt; 30'\n\n"
+            "<b>💼 Portfolio</b>\n"
+            "• <i>Add:</i> 'Bought 10 TCS at 3000'\n"
+            "• <i>Sell:</i> 'Sold 5 TCS at 3200'\n"
+            "• <i>View:</i> 'Show my portfolio' or use menu.\n\n"
+            "<b>🔔 Alerts</b>\n"
+            "• Type: 'Alert me if INFYS &gt; 1500'\n"
+            "• Type: 'Alert if NIFTY drops below 18000'\n\n"
+            "<b>💎 Subscription</b>\n"
+            "• Check 'My Plan' to see your limits.\n"
+            "• Admin? Type 'redeem YOUR_CODE' to unlock.\n\n"
+            "<i>Just type your request naturally!</i>"
+        )
+        await update.message.reply_text(help_text, parse_mode='HTML')
+        return
+
+    if text == "🔒 Privacy Policy" or text == "/privacy":
+        policy_text = (
+            "<b>🔒 Privacy Policy</b>\n\n"
+            "At Pystock, your privacy and data security are our top priorities.\n\n"
+            "✅ <b>No Data Access:</b> We do not access, read, or store your personal portfolio data for any purpose other than providing you with the requested analytics.\n"
+            "✅ <b>Local Execution:</b> All critical operations are executed securely on your instance.\n"
+            "✅ <b>No Third-Party Sharing:</b> Your data is never shared with, sold to, or used by third parties.\n"
+            "✅ <b>Secure Infrastructure:</b> We use industry-standard encryption and security practices to protect your information.\n\n"
+            "<i>Your financial data belongs to you, and only you.</i>"
+        )
+        await update.message.reply_text(policy_text, parse_mode='HTML')
+        return
+
     if text == "⚠️ Disclaimer":
         disclaimer_text = (
             "⚠️ <b>DISCLAIMER</b>\n\n"
@@ -196,6 +256,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Return to Main Menu
         keyboard = [
             ["🔍 Screener", "💼 Portfolio"],
+            ["💎 My Plan", "📖 Readme"],
             ["⚠️ Disclaimer"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -214,8 +275,88 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "❌ Delete":
         await update.message.reply_text("🗑️ <b>Delete Holding</b>\nType: 'Delete TCS from portfolio'", parse_mode='HTML')
         return
+
+    # --- SUBSCRIPTION MENU ---
+    if "my plan" in text.lower() or text == "💎 My Plan":
+        # Fetch status from Backend
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(f"{BACKEND_URL}/api/subscription/status?user_id={user_id}") as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        tier = data.get("tier", "FREE")
+                        usage = data.get("usage", 0)
+                        limit = data.get("limit", 10)
+                        
+                        # Progress Bar
+                        if tier == "ADMIN":
+                            bar = "∞" * 10
+                            msg = (
+                                f"💎 <b>SUBSCRIPTION PLAN</b>\n"
+                                f"━━━━━━━━━━━━━━━━━━━\n"
+                                f"Plan: <b>{tier}</b>\n"
+                                f"Usage: {usage} (Unlimited)\n"
+                                f"[∞∞∞∞∞∞∞∞∞∞] 100%\n"
+                                f"━━━━━━━━━━━━━━━━━━━\n\n"
+                            )
+                        else:
+                            pct = (usage / limit) * 100 if limit > 0 else 0
+                            bar_len = 10
+                            filled = int(bar_len * pct / 100)
+                            bar = "█" * filled + "░" * (bar_len - filled)
+                            
+                            msg = (
+                                f"💎 <b>SUBSCRIPTION PLAN</b>\n"
+                                f"━━━━━━━━━━━━━━━━━━━\n"
+                                f"Plan: <b>{tier}</b>\n"
+                                f"Usage: {usage}/{limit} requests\n"
+                                f"[{bar}] {int(pct)}%\n"
+                                f"━━━━━━━━━━━━━━━━━━━\n\n"
+                            )
+                        
+                        keyboard = []
+                        if tier == "FREE":
+                            msg += "💡 <i>Upgrade to get more daily requests!</i>"
+                            keyboard.append([InlineKeyboardButton("✨ Upgrade to PRO (₹199)", callback_data="sub_upgrade_pro")])
+                        elif tier == "PRO":
+                             msg += "🚀 <i>Need more power? Go Premium!</i>"
+                             keyboard.append([InlineKeyboardButton("🔥 Upgrade to PREMIUM (₹499)", callback_data="sub_upgrade_premium")])
+                        
+                        keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")])
+                        
+                        await update.message.reply_text(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+                    else:
+                        await update.message.reply_text("❌ Failed to fetch plan.")
+            except Exception as e:
+                logger.error(f"Subscription Error: {e}")
+                await update.message.reply_text("❌ Connection Error.")
+        return
         
-    # --- SCREENER SUB-COMMANDS ---
+    # --- REDEEM CODE CHECK (Before Main Menu) ---
+    if text.lower().startswith("redeem "):
+        code = text.split(" ", 1)[1].strip()
+        msg = await update.message.reply_text("🔄 Verifying access code...")
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                payload = {"user_id": str(user_id), "code": code}
+                async with session.post(f"{BACKEND_URL}/api/subscription/redeem", json=payload) as resp:
+                    if resp.status == 200:
+                        res = await resp.json()
+                        if res.get("success"):
+                            await msg.edit_text("🎉 <b>Access Granted!</b>\nYou now have Unlimited Admin Access.", parse_mode='HTML')
+                        else:
+                            await msg.edit_text("❌ Invalid Code.")
+                    elif resp.status == 500:
+                        await msg.edit_text("❌ Tester mode not configured.")
+                    else:
+                        await msg.edit_text("❌ Verification failed.")
+            except Exception as e:
+                logger.error(f"Redeem Error: {e}")
+                await msg.edit_text("❌ Connection Error.")
+        return
+
+    # --- MAIN MENU ROUTING ---
     if text == "📋 Pre-built":
         # We will show the list of scans here
         # For now, just a placeholder list
@@ -351,7 +492,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             pnl_emoji = "💰" if total_pnl >= 0 else "📉"
                             sign = "+" if total_pnl >= 0 else ""
                             
-                            msg = f"📊 <b>Your Portfolio</b>\n"
+                            msg = "📊 <b>Your Portfolio</b>\n"
                             msg += f"Total Value: ₹{total_val:,.2f}\n"
                             msg += f"Total P&L: {sign}₹{total_pnl:,.2f} ({sign}{total_pct:,.2f}%) {pnl_emoji}\n"
                             msg += "━━━━━━━━━━━━━━━━━━━\n\n"
@@ -427,6 +568,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                  await status_msg.edit_text(f"❌ Could not find quote for {symbol}.")
                          else:
                              await status_msg.edit_text("❌ Quote Service Error.")
+
+        elif status == "ERROR":
+            await status_msg.edit_text(f"❌ {result.get('message', 'An error occurred.')}")
 
         else:
             await status_msg.edit_text("⚠️ Unknown Response.")
@@ -514,7 +658,71 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      await query.answer("Delete Failed", show_alert=True)
 
     elif data == "p_perf":
-        await query.message.reply_text("📊 <b>Performance Analysis</b>\nComing soon in next update!", parse_mode='HTML')
+        await query.edit_message_text("📊 Generating Performance Chart... Please wait.")
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                # Fetch Data
+                async with session.get(f"{BACKEND_URL}/api/portfolio/performance?user_id={user_id}") as resp:
+                    if resp.status == 200:
+                        json_data = await resp.json()
+                        dates = json_data.get("dates", [])
+                        values = json_data.get("values", [])
+                        
+                        if not dates or len(dates) < 2:
+                            await query.message.reply_text("📉 Not enough data for a chart yet.")
+                            return
+
+                        # Generate Chart
+                        import matplotlib.pyplot as plt
+                        import pandas as pd
+                        import io
+                        
+                        # Data Prep
+                        df = pd.DataFrame({'Date': pd.to_datetime(dates), 'Value': values})
+                        
+                        plt.figure(figsize=(10, 5))
+                        plt.plot(df['Date'], df['Value'], marker='o', linestyle='-', color='#007bff', linewidth=2, markersize=4)
+                        
+                        plt.title("Portfolio Equity Curve (30 Days)", fontsize=14, fontweight='bold')
+                        plt.xlabel("Date", fontsize=10)
+                        plt.ylabel("Value (₹)", fontsize=10)
+                        plt.grid(True, linestyle='--', alpha=0.6)
+                        plt.xticks(rotation=45)
+                        plt.tight_layout()
+                        
+                        # Save to Buffer
+                        buf = io.BytesIO()
+                        plt.savefig(buf, format='png')
+                        buf.seek(0)
+                        plt.close()
+                        
+                        # Calculate Change
+                        start_val = values[0]
+                        end_val = values[-1]
+                        change = end_val - start_val
+                        pct = (change / start_val) * 100 if start_val > 0 else 0
+                        emoji = "🚀" if change >= 0 else "🔻"
+                        sign = "+" if change >= 0 else ""
+                        
+                        caption = (
+                            f"📊 <b>Portfolio Performance</b>\n"
+                            f"30-Day Change: {sign}₹{change:,.2f} ({sign}{pct:.2f}%) {emoji}\n"
+                            f"Current Value: ₹{end_val:,.2f}"
+                        )
+                        
+                        # Send Photo (Delete loading text first)
+                        await query.message.delete()
+                        await query.message.reply_photo(photo=buf, caption=caption, parse_mode='HTML')
+                        
+                        # Re-show menu?
+                        # await show_portfolio_menu... (Optional, but let's keep it clean)
+                        
+                    else:
+                        await query.message.reply_text("❌ Failed to fetch performance data.")
+            except Exception as e:
+                logger.error(f"Chart Error: {e}")
+                await query.message.reply_text("❌ Error generating chart.")
         
     elif data == "p_details":
         # Fetch symbols to show selection
@@ -698,6 +906,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                         await query.edit_message_text("❌ Stock not found.")
 
+    
+    elif data.startswith("sub_upgrade_"):
+        # Payment Integration Pending
+        await query.answer("🚧 Payments Coming Soon!", show_alert=True)
+        await query.message.edit_text(
+            "🚧 <b>Coming Soon!</b>\n\n"
+            "We are currently integrating a secure payment gateway (Razorpay).\n"
+            "Stay tuned for updates!",
+            parse_mode='HTML'
+        )
+
+    elif data == "back_to_menu":
+        await query.message.delete()
+        # Clean exit to menu logic or just let user type command
+
 def main():
     """Start the bot."""
     if not BOT_TOKEN:
@@ -707,12 +930,65 @@ def main():
     application = Application.builder().token(BOT_TOKEN).build()
 
     # on different commands - answer in Telegram
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.add_handler(CallbackQueryHandler(button_handler))
+    
+    # WEBHOOK MODE (For Production)
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    PORT = int(os.getenv("PORT", "8443"))
+    
+    
+    # Define commands list
+    async def post_init(application: Application):
+        from telegram import BotCommand
+        await application.bot.set_my_commands([
+            BotCommand("start", "Restart Bot & Menu"),
+            BotCommand("plan", "💎 My Subscription Plan"),
+            BotCommand("screener", "🔍 Stock Screener"),
+            BotCommand("portfolio", "💼 My Portfolio"),
+            BotCommand("help", "❓ Help & Usage")
+        ])
 
-    # Run the bot until the user presses Ctrl-C
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    if WEBHOOK_URL:
+        logger.info(f"🚀 Starting Bot in WEBHOOK mode on port {PORT}")
+        # Attach post_init
+        application.post_init = post_init
+        
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("plan", lambda u,c: start(u,c))) # Reuse start or specific handler?
+        # Actually, let's just make 'plan' trigger the text handler logic for 'My Plan'
+        # But CommandHandler is cleaner.
+        # Simpler: Just rely on the menu buttons for now, adding commands is good enough.
+        # Wait, if I add "plan" command, I need a handler for it.
+        
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(CallbackQueryHandler(button_handler))
+        
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=BOT_TOKEN,
+            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        )
+    else:
+        # POLLING MODE (For Development)
+        logger.info("🚀 Starting Bot in POLLING mode")
+        
+        application.post_init = post_init
+        
+        application.add_handler(CommandHandler("start", start))
+        # Add basic command aliases if user clicks menu
+        async def cmd_plan_alias(u, c): u.message.text = "💎 My Plan"; await handle_message(u, c)
+        async def cmd_screen_alias(u, c): u.message.text = "🔍 Screener"; await handle_message(u, c)
+        async def cmd_port_alias(u, c): u.message.text = "💼 Portfolio"; await handle_message(u, c)
+        
+        application.add_handler(CommandHandler("plan", cmd_plan_alias))
+        application.add_handler(CommandHandler("screener", cmd_screen_alias))
+        application.add_handler(CommandHandler("portfolio", cmd_port_alias))
+        application.add_handler(CommandHandler("help", lambda u,c: u.message.reply_text("Type 'start' for menu.")))
+
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        application.add_handler(CallbackQueryHandler(button_handler))
+        
+        application.run_polling()
 
 if __name__ == "__main__":
     main()

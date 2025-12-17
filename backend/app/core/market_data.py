@@ -60,26 +60,25 @@ class MarketDataService:
                 return None
 
         # Search for the scrip first to get token
-        print(f"DEBUG: 🔍 Searching Finvasia for: {symbol}", flush=True)
+        logger.debug(f"🔍 Searching Finvasia for: {symbol}")
         search = self.api.searchscrip(exchange=exchange, searchtext=symbol)
         
         # Retry with -EQ suffix if not found (Common Finvasia issue)
         if not search and not symbol.endswith("-EQ"):
-             print(f"DEBUG: ⚠️ Exact match failed. Retrying with {symbol}-EQ...", flush=True)
+             logger.debug(f"⚠️ Exact match failed. Retrying with {symbol}-EQ...")
              search = self.api.searchscrip(exchange=exchange, searchtext=f"{symbol}-EQ")
         
         if search and len(search) > 0:
-            # Assume first match is correct (Improve this later)
             match = search[0]
             token = match['token']
             trading_symbol = match['tsym']
-            print(f"DEBUG: ✅ Found Symbol: {trading_symbol} (Token: {token})", flush=True)
+            logger.debug(f"✅ Found Symbol: {trading_symbol} (Token: {token})")
             
             # Get Quote
             # NorenApi uses different methods for Rest vs Websocket. 
             # For MVP, we use REST snapshot.
             quote = self.api.get_quotes(exchange=exchange, token=token)
-            print(f"DEBUG: 📉 Raw Quote Response: {quote}", flush=True)
+            logger.debug(f"📉 Raw Quote Response: {quote}")
             
             if quote and quote.get('stat') == 'Ok':
                 return {
@@ -94,7 +93,7 @@ class MarketDataService:
         
         # --- FAILOVER: YAHOO FINANCE (For Weekends & Holidays) ---
         # If Finvasia fails (Token not found), we fetch from Yahoo.
-        print(f"DEBUG: ⚠️ Finvasia Failed. Rolling over to Yahoo Finance for {symbol}...", flush=True)
+        logger.warning(f"⚠️ Finvasia Failed. Rolling over to Yahoo Finance for {symbol}...")
         try:
             import yfinance as yf
             # Step 1: Fetch Intraday 1m Data (For precise LTP)
@@ -128,7 +127,7 @@ class MarketDataService:
                 if len(daily_data) >= 2:
                     prev_close = daily_data.iloc[-2]['Close']
 
-                print(f"DEBUG: ✅ Combined Yahoo Data -> LTP: {ltp}, PrevClose: {prev_close}, H/L: {last_day['High']}/{last_day['Low']}", flush=True)
+                logger.debug(f"✅ Combined Yahoo Data -> LTP: {ltp}, PrevClose: {prev_close}, H/L: {last_day['High']}/{last_day['Low']}")
                 
                 return {
                      "symbol": symbol,
@@ -141,7 +140,7 @@ class MarketDataService:
                      "status": "FALLBACK_YF_HYBRID"
                 }
         except Exception as e:
-            print(f"DEBUG: ❌ Yahoo Finance Failed: {str(e)}", flush=True)
+            logger.error(f"❌ Yahoo Finance Failed: {str(e)}")
 
         # --- LAST RESORT: MOCK DATA ---
         import random

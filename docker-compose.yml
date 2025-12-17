@@ -10,7 +10,7 @@ services:
     ports:
       - "8005:8000"
     environment:
-      - DATABASE_URL=mysql+pymysql://user:password@db:3306/pystock
+      - DATABASE_URL=mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db:3306/${DB_NAME}
       - REDIS_URL=redis://redis:6379/0
       - CHUTES_API_TOKEN=${CHUTES_API_TOKEN}
       - FINVASIA_USER_ID=${FINVASIA_USER_ID}
@@ -19,6 +19,12 @@ services:
       - FINVASIA_TOTP_KEY=${FINVASIA_TOTP_KEY}
       - FINVASIA_VENDOR_CODE=${FINVASIA_VENDOR_CODE}
       - FINVASIA_IMEI=${FINVASIA_IMEI}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=db
+      - ADMIN_IDS=${ADMIN_IDS}
+      - TESTER_ACCESS_CODE=${TESTER_ACCESS_CODE}
     depends_on:
       db:
         condition: service_healthy
@@ -42,10 +48,10 @@ services:
     container_name: pystock_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: pystock
-      MYSQL_USER: user
-      MYSQL_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
       - "3306:3306"
     volumes:

@@ -83,6 +83,7 @@ PROTOCOLS:
    - "Alert me when TCS hits 3000" -> `CREATE_ALERT`
    - "Notify if Reliance reaches 2500" -> `CREATE_ALERT`
    - "Bought 10 TCS..." -> `ADD_PORTFOLIO`
+   - "Sold 10 TCS..." -> `SELL_PORTFOLIO`
    - "Show my portfolio" -> `VIEW_PORTFOLIO`
    - "Delete TCS from portfolio" -> `DELETE_PORTFOLIO`
    - "Update TCS quantity to 50" -> `UPDATE_PORTFOLIO`
@@ -95,7 +96,18 @@ PROTOCOLS:
 [CASE: ADD_PORTFOLIO]
 { 
   "intent": "ADD_PORTFOLIO", "status": "CONFIRMED", 
-  "data": { "symbol": "TICKER", "quantity": 10, "price": 3000, "date": "..." } 
+  "data": { 
+      "items": [
+          { "symbol": "TICKER", "quantity": 10, "price": 3000, "date": "..." },
+          { "symbol": "TICKER2", "quantity": 5, "price": 100 }
+      ]
+  } 
+}
+
+[CASE: SELL_PORTFOLIO]
+{ 
+  "intent": "SELL_PORTFOLIO", "status": "CONFIRMED", 
+  "data": { "symbol": "TICKER", "quantity": 10, "price": 3500, "date": "..." } 
 }
 
 [CASE: DELETE_PORTFOLIO]

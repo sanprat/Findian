@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 # Core Modules
 from app.core.ai import AIAlertInterpreter 
 from app.db.base import Base, engine, get_db
-from app.db.models import Alert
+from app.db.models import Alert, TradeHistory
 from app.core.market_data import MarketDataService
 from app.core.scanner import MarketScannerService
 from app.core.scheduler import AlertMonitor
+from app.core.rate_limiter import custom_limiter
+from app.core.subscription import get_user_tier
 
 # Initialize Database Tables
 Base.metadata.create_all(bind=engine)
@@ -38,17 +40,71 @@ async def get_quote(symbol: str):
     return {"success": False, "message": "Symbol not found or Market Data error."}
 
 
+class UserRegisterRequest(BaseModel):
+    telegram_id: int
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+@app.post("/api/auth/register")
+def register_user(payload: UserRegisterRequest, db: Session = Depends(get_db)):
+    """Register or Update a Telegram User."""
+    from app.db.models import User
+    
+    try:
+        # Check if user exists
+        user = db.query(User).filter(User.telegram_id == int(payload.telegram_id)).first()
+        
+        if not user:
+            # Create new
+            user = User(
+                telegram_id=int(payload.telegram_id),
+                username=payload.username,
+                first_name=payload.first_name,
+                last_name=payload.last_name
+            )
+            
+            # Check for Admin Override
+            admin_ids = os.getenv("ADMIN_IDS", "").split(",")
+            if str(payload.telegram_id) in admin_ids:
+                user.subscription_tier = "ADMIN"
+                
+            db.add(user)
+            db.commit()
+            return {"success": True, "message": "User Registered", "user_id": user.telegram_id, "is_new": True}
+        else:
+            # Update existing
+            if payload.username: user.username = payload.username
+            if payload.first_name: user.first_name = payload.first_name
+            if payload.last_name: user.last_name = payload.last_name
+            
+            # Re-check Admin (in case added to env later)
+            admin_ids = os.getenv("ADMIN_IDS", "").split(",")
+            if str(payload.telegram_id) in admin_ids and user.subscription_tier != "ADMIN":
+                user.subscription_tier = "ADMIN"
+            
+            db.commit()
+            return {"success": True, "message": "User Updated", "user_id": user.telegram_id, "is_new": False}
+            
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 class AlertQuery(BaseModel):
     user_id: str
     query: str
 
 @app.post("/api/screener/custom")
-async def custom_screen(query_payload: AlertQuery): # Re-using AlertQuery {user_id, query}
+async def custom_screen(query_payload: AlertQuery, db: Session = Depends(get_db)): # Re-using AlertQuery {user_id, query}
     """
     1. Parse NL Query -> JSON Filters
     2. Fetch Redis Snapshot
     3. Filter Data
     """
+    # Rate Limit Check
+    tier = get_user_tier(query_payload.user_id, db)
+    if not custom_limiter.is_allowed(query_payload.user_id, tier):
+        raise HTTPException(status_code=429, detail="Daily rate limit exceeded. Upgrade to Pro/Premium for more.")
+
     user_query = query_payload.query
     
     # 1. AI Parse
@@ -247,9 +303,17 @@ async def startup_event():
     else:
         logger.warning("⚠️ Failed to connect to Market Data Feed")
 
-@app.get("/")
+@app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "backend"}
+
+@app.get("/health/ready")
+def readiness_probe():
+    return {
+        "status": "ready", 
+        "market_data": market_data.is_connected,
+        "redis": scanner_service.r.ping() if scanner_service.r else False
+    }
 
 @app.get("/health/market")
 def market_health():
@@ -264,10 +328,76 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
     Endpoint to process natural language alert requests.
     This connects to the AI Agent (Clarification Loop).
     """
+    # Rate Limit Check
+    tier = get_user_tier(query.user_id, db)
+    if not custom_limiter.is_allowed(query.user_id, tier):
+        raise HTTPException(status_code=429, detail="Daily rate limit exceeded. Upgrade to Pro/Premium for more.")
+
     # Instantiate the Chutes AI interpreter
     ai = AIAlertInterpreter()
     
     result = await ai.interpret(query.query)
+
+# --- SUBSCRIPTION ENDPOINTS ---
+@app.get("/api/subscription/status")
+def get_subscription_status(user_id: str, db: Session = Depends(get_db)):
+    """Get User Tier and Usage Stats."""
+    from app.core.rate_limiter import TIER_QUOTAS
+    
+    tier = get_user_tier(user_id, db)
+    usage = custom_limiter.get_usage(user_id)
+    
+    # Parse limit from string "100/day" -> 100
+    limit_str = TIER_QUOTAS.get(tier, "10/day")
+    limit = int(limit_str.split("/")[0])
+    
+    return {
+        "tier": tier,
+        "usage": usage,
+        "limit": limit,
+        "reset_in": "24h" # Simplification
+    }
+
+class UpgradeRequest(BaseModel):
+    user_id: str
+    tier: str # PRO, PREMIUM
+
+@app.post("/api/subscription/upgrade")
+def upgrade_subscription(payload: UpgradeRequest, db: Session = Depends(get_db)):
+    """Mock Endpoint to Upgrade User."""
+    from app.core.subscription import upgrade_user
+    
+    if payload.tier not in ["FREE", "PRO", "PREMIUM"]:
+         raise HTTPException(status_code=400, detail="Invalid Tier")
+         
+    success = upgrade_user(payload.user_id, payload.tier, db)
+    if success:
+        return {"success": True, "message": f"Upgraded to {payload.tier}!"}
+    return {"success": False, "message": "User not found."}
+
+class RedeemRequest(BaseModel):
+    user_id: str
+    code: str
+
+@app.post("/api/subscription/redeem")
+def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
+    """Upgrade user to ADMIN if correct tester code is provided."""
+    from app.core.subscription import upgrade_user
+    
+    secret_code = os.getenv("TESTER_ACCESS_CODE")
+    if not secret_code:
+        raise HTTPException(status_code=500, detail="Tester code not configured on server.")
+        
+    if payload.code.strip() == secret_code:
+        # Upgrade to ADMIN
+        success = upgrade_user(payload.user_id, "ADMIN", db)
+        if success:
+             return {"success": True, "message": "Access Granted! You are now an Admin."}
+        return {"success": False, "message": "User not found."}
+    else:
+        return {"success": False, "message": "Invalid Access Code."}
+
+
     
     # Map the AI result to our response model
     if result.get("status") == "ERROR":
@@ -325,44 +455,127 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
             from app.db.models import Portfolio
             from dateutil import parser
             
-            try:
-                # Parse date if provided, else Default to Now
-                date_str = data.get("date")
-                if date_str:
-                    try:
-                        p_date = parser.parse(date_str)
-                    except:
-                        p_date = datetime.utcnow()
-                else:
-                    p_date = datetime.utcnow()
+            items = data.get("items", [])
+            if not items and "symbol" in data:
+                # Fallback for single item structure
+                items = [data]
+            
+            if not items:
+                 return {"success": False, "status": "ERROR", "message": "No valid items found to add."}
 
-                new_entry = Portfolio(
-                    user_id=int(query.user_id),
-                    symbol=data.get("symbol"),
-                    quantity=int(data.get("quantity", 0)),
-                    avg_price=float(data.get("price", 0.0)),
-                    purchase_date=p_date
-                )
-                db.add(new_entry)
+            added_msgs = []
+            
+            try:
+                for item in items:
+                    # Parse date if provided, else Default to Now
+                    date_str = item.get("date")
+                    if date_str:
+                        try:
+                            p_date = parser.parse(date_str)
+                        except:
+                            p_date = datetime.utcnow()
+                    else:
+                        p_date = datetime.utcnow()
+
+                    new_entry = Portfolio(
+                        user_id=int(query.user_id),
+                        symbol=item.get("symbol"),
+                        quantity=int(item.get("quantity", 0)),
+                        avg_price=float(item.get("price", 0.0)),
+                        purchase_date=p_date
+                    )
+                    db.add(new_entry)
+                    
+                    # Log Trade History (BUY)
+                    new_trade = TradeHistory(
+                        user_id=int(query.user_id),
+                        symbol=item.get("symbol"),
+                        quantity=int(item.get("quantity", 0)),
+                        price=float(item.get("price", 0.0)),
+                        trade_type="BUY",
+                        trade_date=p_date
+                    )
+                    db.add(new_trade)
+                    
+                    added_msgs.append(f"{new_entry.quantity} {new_entry.symbol}")
+                
                 db.commit()
                 
                 # Format date for display
-                date_disp = p_date.strftime("%d %b %Y")
+                msg_str = ", ".join(added_msgs)
                 return {
                     "success": True, 
                     "status": "PORTFOLIO_ADDED",
-                    "message": f"💼 Added {new_entry.quantity} {new_entry.symbol} @ {new_entry.avg_price} (Date: {date_disp})!"
+                    "message": f"💼 Added: {msg_str}!"
                 }
             except Exception as e:
                 return {"success": False, "status": "ERROR", "message": f"Portfolio DB Error: {str(e)}"}
 
+        # --- HANDLE PORTFOLIO SELL ---
+        elif intent == "SELL_PORTFOLIO":
+            data = result.get("data", {})
+            sym = data.get("symbol")
+            qty_to_sell = int(data.get("quantity", 0))
+            sell_price = float(data.get("price", 0.0))
+            
+            if not sym or qty_to_sell <= 0:
+                 return {"success": False, "status": "ERROR", "message": "Invalid sell details."}
+
+            from app.db.models import Portfolio
+            
+            try:
+                # Fetch existing holdings sorted by date (FIFO)
+                holdings = db.query(Portfolio).filter(
+                    Portfolio.user_id == int(query.user_id),
+                    Portfolio.symbol == sym
+                ).order_by(Portfolio.purchase_date.asc()).all()
+                
+                total_qty = sum(h.quantity for h in holdings)
+                if total_qty < qty_to_sell:
+                    return {"success": False, "status": "ERROR", "message": f"Insufficient holdings. You only have {total_qty} {sym}."}
+                
+                qty_remaining = qty_to_sell
+                total_realized_pnl = 0.0
+                
+                for h in holdings:
+                    if qty_remaining <= 0: break
+                    
+                    qty_deduct = min(h.quantity, qty_remaining)
+                    
+                    # Calculate PnL for this portion
+                    buy_val = qty_deduct * h.avg_price
+                    sell_val = qty_deduct * sell_price
+                    pnl = sell_val - buy_val
+                    total_realized_pnl += pnl
+                    
+                    # Update Holding
+                    if h.quantity == qty_deduct:
+                        db.delete(h)
+                    else:
+                        h.quantity -= qty_deduct
+                    
+                    qty_remaining -= qty_deduct
+                    
+                # Record Trade
+                trade = TradeHistory(
+                    user_id=int(query.user_id),
+                    symbol=sym,
+                    quantity=qty_to_sell,
+                    price=sell_price,
+                    trade_type="SELL",
+                    realized_pnl=total_realized_pnl
+                )
+                db.add(trade)
+                db.commit()
+                
+                pnl_emoji = "🟢" if total_realized_pnl >= 0 else "🔴"
                 return {
                     "success": True, 
-                    "status": "PORTFOLIO_ADDED",
-                    "message": f"💼 Added {new_entry.quantity} {new_entry.symbol} @ {new_entry.avg_price} (Date: {date_disp})!"
+                    "status": "PORTFOLIO_SOLD", 
+                    "message": f"💸 Sold {qty_to_sell} {sym} @ {sell_price}\nRealized P&L: {pnl_emoji} {round(total_realized_pnl, 2)}"
                 }
             except Exception as e:
-                return {"success": False, "status": "ERROR", "message": f"Portfolio DB Error: {str(e)}"}
+                return {"success": False, "status": "ERROR", "message": f"Sell Error: {str(e)}"}
 
         # --- HANDLE PORTFOLIO DELETE ---
         elif intent == "DELETE_PORTFOLIO":

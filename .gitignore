@@ -7,6 +7,9 @@ agent_session*.log
 # Claude Code configuration
 .claude/
 
+# Deployment configuration
+DEPLOYMENT.md
+
 # Python
 __pycache__/
 *.py[cod]

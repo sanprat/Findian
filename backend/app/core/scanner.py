@@ -93,9 +93,37 @@ class MarketScannerService:
         Runs continuously in background thread.
         """
         logger.info("ℹ️ Scanner Loop Running...")
+        import yfinance as yf
+        import pandas as pd
         
         while self.is_running:
             try:
+                # 1. BATCH FETCH HISTORY (For Indicators)
+                # Fetching 1mo history for all symbols to calculate RSI
+                tickers_list = [f"{sym}.NS" for sym in self.symbols]
+                tickers_str = " ".join(tickers_list)
+                history_map = {}
+                try:
+                    # Optimized batch fetch
+                    data = yf.download(tickers_str, period="1mo", threads=True, group_by='ticker', progress=False)
+                    for sym in self.symbols:
+                        try:
+                            # yfinance logic to extract DF for symbol
+                            # If only 1 symbol, data is the DF. If multiple, data is Dict-like/MultiIndex
+                            try:
+                                df = data[f"{sym}.NS"] if len(self.symbols) > 1 else data
+                            except KeyError:
+                                df = None
+                                
+                            if df is not None and not df.empty:
+                                # Clean MultiIndex cols if present [('Close', 'RELIANCE.NS')] -> 'Close'
+                                if isinstance(df.columns, pd.MultiIndex):
+                                    df.columns = df.columns.droplevel(1)
+                                history_map[sym] = df
+                        except: pass
+                except Exception as e:
+                    logger.warning(f"Batch History Fetch Failed: {e}")
+
                 count = 0
                 for sym in self.symbols:
                     if not self.is_running: break
@@ -123,9 +151,8 @@ class MarketScannerService:
                     except Exception as e:
                         logger.warning(f"Real Data Fetch Failed for {sym}: {e}")
                         
-                    # 2. FAILOVER: Mock Data if MD completely fails (Should not happen with Hybrid engine often)
+                    # 2. FAILOVER: Mock Data if MD completely fails
                     if not data_to_store:
-                         # Keeping minimal mock for absolute worst case
                          import random
                          base = 1000
                          data_to_store = {
@@ -139,14 +166,40 @@ class MarketScannerService:
 
                     # 3. Add Indicators (RSI/SMA) & Store
                     if data_to_store:
-                        import random
-                        # Consistent Mock Indicators (can be replaced by ta-lib later)
-                        mock_rsi = random.uniform(25, 75)
-                        # Bias RSI based on price change for realism
-                        if data_to_store["change_percent"] > 3: mock_rsi = random.uniform(65, 85)
-                        if data_to_store["change_percent"] < -3: mock_rsi = random.uniform(15, 35)
+                        # REAL RSI CALCULATION (Manual Implementation)
+                        rsi_val = 50.0
+                        if sym in history_map:
+                             df = history_map[sym]
+                             try:
+                                 # Ensure we have enough data (RSI default 14)
+                                 if len(df) > 14:
+                                     # Calculate RSI
+                                     # Update last row with latest LTP from Quote if available
+                                     if data_to_store.get('ltp'):
+                                         df_calc = df.copy() 
+                                         # Update last close
+                                         col_idx = df_calc.columns.get_loc('Close')
+                                         df_calc.iloc[-1, col_idx] = data_to_store['ltp']
+                                         
+                                         # Manual RSI Logic (Wilder's Smoothing)
+                                         delta = df_calc['Close'].diff()
+                                         gain = (delta.where(delta > 0, 0)).fillna(0)
+                                         loss = (-delta.where(delta < 0, 0)).fillna(0)
+                                         
+                                         avg_gain = gain.ewm(com=13, adjust=False).mean()
+                                         avg_loss = loss.ewm(com=13, adjust=False).mean()
+                                         
+                                         rs = avg_gain / avg_loss
+                                         df_calc['RSI_14'] = 100 - (100 / (1 + rs))
+
+                                         val = df_calc['RSI_14'].iloc[-1]
+                                         if not pd.isna(val):
+                                             rsi_val = float(val)
+                             except Exception as e:
+                                 # logger.warning(f"RSI Calc Error {sym}: {e}")
+                                 pass
                         
-                        data_to_store["rsi"] = round(mock_rsi, 2)
+                        data_to_store["rsi"] = round(rsi_val, 2)
                         
                         from datetime import datetime
                         data_to_store["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -155,7 +208,7 @@ class MarketScannerService:
                         self.r.hset(key, mapping=data_to_store)
                         count += 1
                         
-                    time.sleep(0.05) # Fast loop for mock
+                    time.sleep(0.05) # Fast loop
                 
                 logger.info(f"✅ Snapshot Updated: {count}/{len(self.symbols)} stocks.")
                 time.sleep(60)
