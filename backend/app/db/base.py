@@ -54,13 +54,22 @@ def get_engine(url, retries=10, delay=5):
     """Retrieve database engine with retry logic."""
     for i in range(retries):
         try:
-            # Pre-check TCP connectivity (only on first attempt or if we are retrying)
-            if i == 0:
-                host = url.split("@")[-1].split(":")[0]
-                # Extract host safely (basic parsing for mysql string)
-                if "db" in url or "localhost" in url:
-                     # fallback logic for quick host extraction if needed, but we have global db_host
-                     wait_for_db(db_host)
+            # Pre-check TCP connectivity (only on first attempt)
+            if i == 0 and url.startswith("mysql"):
+                # Extract host from URL: mysql+pymysql://user:pass@HOST:PORT/db
+                try:
+                    host_part = url.split("@")[1].split("/")[0]  # Gets "HOST:PORT"
+                    if ":" in host_part:
+                        host = host_part.split(":")[0]
+                        port = int(host_part.split(":")[1])
+                    else:
+                        host = host_part
+                        port = 3306
+                    
+                    print(f"🔍 Checking database connectivity to {host}:{port}...")
+                    wait_for_db(host, port)
+                except Exception as parse_error:
+                    print(f"⚠️ Could not parse host from URL, skipping pre-check: {parse_error}")
 
             connect_args = {}
             
