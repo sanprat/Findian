@@ -56,40 +56,42 @@ class MarketDataService:
         Fetch live quote (LTP) for a symbol.
         """
         if not self.is_connected:
-            if not self.login():
-                return None
+            self.login()
 
-        # Search for the scrip first to get token
-        logger.debug(f"🔍 Searching Finvasia for: {symbol}")
-        search = self.api.searchscrip(exchange=exchange, searchtext=symbol)
-        
-        # Retry with -EQ suffix if not found (Common Finvasia issue)
-        if not search and not symbol.endswith("-EQ"):
-             logger.debug(f"⚠️ Exact match failed. Retrying with {symbol}-EQ...")
-             search = self.api.searchscrip(exchange=exchange, searchtext=f"{symbol}-EQ")
-        
-        if search and len(search) > 0:
-            match = search[0]
-            token = match['token']
-            trading_symbol = match['tsym']
-            logger.debug(f"✅ Found Symbol: {trading_symbol} (Token: {token})")
+        try:
+            # Search for the scrip first to get token
+            logger.debug(f"🔍 Searching Finvasia for: {symbol}")
+            search = self.api.searchscrip(exchange=exchange, searchtext=symbol)
             
-            # Get Quote
-            # NorenApi uses different methods for Rest vs Websocket. 
-            # For MVP, we use REST snapshot.
-            quote = self.api.get_quotes(exchange=exchange, token=token)
-            logger.debug(f"📉 Raw Quote Response: {quote}")
+            # Retry with -EQ suffix if not found (Common Finvasia issue)
+            if not search and not symbol.endswith("-EQ"):
+                 logger.debug(f"⚠️ Exact match failed. Retrying with {symbol}-EQ...")
+                 search = self.api.searchscrip(exchange=exchange, searchtext=f"{symbol}-EQ")
             
-            if quote and quote.get('stat') == 'Ok':
-                return {
-                    "symbol": symbol,
-                    "ltp": float(quote.get('lp', 0)),
-                    "volume": int(quote.get('v', 0)),
-                    "close": float(quote.get('c', 0)),
-                    "high": float(quote.get('h', 0)),
-                    "low": float(quote.get('l', 0)),
-                    "open": float(quote.get('o', 0)),
-                }
+            if search and len(search) > 0:
+                match = search[0]
+                token = match['token']
+                trading_symbol = match['tsym']
+                logger.debug(f"✅ Found Symbol: {trading_symbol} (Token: {token})")
+                
+                # Get Quote
+                # NorenApi uses different methods for Rest vs Websocket. 
+                # For MVP, we use REST snapshot.
+                quote = self.api.get_quotes(exchange=exchange, token=token)
+                logger.debug(f"📉 Raw Quote Response: {quote}")
+                
+                if quote and quote.get('stat') == 'Ok':
+                    return {
+                        "symbol": symbol,
+                        "ltp": float(quote.get('lp', 0)),
+                        "volume": int(quote.get('v', 0)),
+                        "close": float(quote.get('c', 0)),
+                        "high": float(quote.get('h', 0)),
+                        "low": float(quote.get('l', 0)),
+                        "open": float(quote.get('o', 0)),
+                    }
+        except Exception as e:
+            logger.warning(f"⚠️ Finvasia API Error for {symbol}: {e}")
         
         # --- FAILOVER: YAHOO FINANCE (For Weekends & Holidays) ---
         # If Finvasia fails (Token not found), we fetch from Yahoo.
