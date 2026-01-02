@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -15,5 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Railway provides PORT env var, default to 8000 for local dev
+ENV PORT=8000
+EXPOSE $PORT
+
+# Run the application - Railway will inject $PORT
+CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT
