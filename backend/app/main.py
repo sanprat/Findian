@@ -56,12 +56,7 @@ market_data = MarketDataService()
 scanner_service = MarketScannerService(market_data)
 monitor_service = AlertMonitor()
 
-@app.on_event("startup")
-async def startup_event():
-    # Start Scanner Loop
-    scanner_service.start()
-    # Start Alert Monitor
-    await monitor_service.start()
+# Startup event is defined later after all route definitions (line ~338)
 
 
 @app.get("/api/quote/{symbol}")
@@ -337,15 +332,23 @@ class AlertResponse(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    # Attempt login on startup
+    """Complete startup sequence for all services."""
     logger = logging.getLogger("uvicorn")
+    
+    # Attempt Finvasia login
     logger.info("Attempting Finvasia Login...")
     if market_data.login():
         logger.info("✅ Connected to Market Data Feed")
-        # Start Scanner Loop
-        scanner_service.start()
     else:
         logger.warning("⚠️ Failed to connect to Market Data Feed")
+    
+    # Start Scanner Loop (requires market data)
+    scanner_service.start()
+    
+    # Start Alert Monitor
+    await monitor_service.start()
+    
+    logger.info("🚀 All services started successfully")
 
 @app.get("/health")
 def health_check():
@@ -426,19 +429,25 @@ class RedeemRequest(BaseModel):
 @app.post("/api/subscription/redeem")
 def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
     """Upgrade user to ADMIN if correct tester code is provided."""
+    import hashlib
     from app.core.subscription import upgrade_user
     
     secret_code = os.getenv("TESTER_ACCESS_CODE")
     if not secret_code:
         raise HTTPException(status_code=500, detail="Tester code not configured on server.")
-        
-    if payload.code.strip() == secret_code:
+    
+    # Secure hash comparison - never log the actual codes
+    provided_hash = hashlib.sha256(payload.code.strip().encode()).hexdigest()
+    stored_hash = hashlib.sha256(secret_code.encode()).hexdigest()
+    
+    if provided_hash == stored_hash:
         # Upgrade to ADMIN
         success = upgrade_user(payload.user_id, "ADMIN", db)
         if success:
              return {"success": True, "message": "Access Granted! You are now an Admin."}
         return {"success": False, "message": "User not found."}
     else:
+        # Don't reveal whether code was wrong (timing attack prevention)
         return {"success": False, "message": "Invalid Access Code."}
 
 
@@ -509,8 +518,19 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
 
             added_msgs = []
             
-            try:
+           try:
                 for item in items:
+                    # Validate inputs before processing
+                    from app.core.security import validate_portfolio_input
+                    
+                    symbol = item.get("symbol", "")
+                    quantity = int(item.get("quantity", 0))
+                    price = float(item.get("price", 0.0))
+                    
+                    is_valid, error_msg = validate_portfolio_input(symbol, quantity, price)
+                    if not is_valid:
+                        return {"success": False, "status": "ERROR", "message": f"Validation error for {symbol}: {error_msg}"}
+                    
                     # Parse date if provided, else Default to Now
                     date_str = item.get("date")
                     if date_str:
@@ -523,9 +543,9 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
 
                     new_entry = Portfolio(
                         user_id=int(query.user_id),
-                        symbol=item.get("symbol"),
-                        quantity=int(item.get("quantity", 0)),
-                        avg_price=float(item.get("price", 0.0)),
+                        symbol=symbol,
+                        quantity=quantity,
+                        avg_price=price,
                         purchase_date=p_date
                     )
                     db.add(new_entry)

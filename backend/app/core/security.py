@@ -47,3 +47,28 @@ def sanitize_query(query: str) -> Optional[str]:
         return None
     
     return sanitized
+
+def validate_portfolio_input(symbol: str, quantity: int, price: float) -> tuple[bool, str]:
+    """
+    Validate portfolio holding inputs.
+    Returns (is_valid, error_message)
+    """
+    # Symbol validation
+    if not symbol or not validate_symbol(symbol):
+        return False, "Invalid symbol format"
+    
+    # Quantity validation
+    if quantity <= 0:
+        return False, "Quantity must be positive"
+    
+    if quantity > 1_000_000:  # Upper limit: 1 million shares
+        return False, "Quantity exceeds reasonable limit (1M shares)"
+    
+    # Price validation
+    if price <= 0:
+        return False, "Price must be positive"
+    
+    if price > 10_000_000:  # Upper limit: ₹1 Crore per share
+        return False, "Price exceeds reasonable limit (₹1Cr/share)"
+    
+    return True, ""
