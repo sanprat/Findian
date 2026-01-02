@@ -37,12 +37,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS - Configure for your frontend domain in production
+# CORS - Configured for production
+# Since this is a Telegram bot backend (not web frontend), we allow:
+# 1. Railway's internal network (for bot <-> backend communication)
+# 2. Localhost for local development
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Replace with specific domains in production
+    allow_origins=allowed_origins,  # Environment-configurable
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Specific methods only
     allow_headers=["*"],
     max_age=600,
 )
