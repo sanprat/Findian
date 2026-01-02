@@ -19,6 +19,34 @@ from app.core.subscription import get_user_tier
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Intelligent Alert System")
+
+# Security Middleware
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Security Headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS - Configure for your frontend domain in production
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # TODO: Replace with specific domains in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=600,
+)
+
 market_data = MarketDataService()
 scanner_service = MarketScannerService(market_data)
 monitor_service = AlertMonitor()
@@ -34,6 +62,11 @@ async def startup_event():
 @app.get("/api/quote/{symbol}")
 async def get_quote(symbol: str):
     """Fetches live quote for a symbol."""
+    # Input Validation
+    from app.core.security import validate_symbol
+    if not validate_symbol(symbol.upper()):
+        raise HTTPException(status_code=400, detail="Invalid symbol format")
+    
     quote = market_data.get_quote(symbol.upper())
     if quote:
         return {"success": True, "data": quote}
@@ -100,6 +133,12 @@ async def custom_screen(query_payload: AlertQuery, db: Session = Depends(get_db)
     2. Fetch Redis Snapshot
     3. Filter Data
     """
+    # Input Validation
+    from app.core.security import sanitize_query
+    sanitized_query = sanitize_query(query_payload.query)
+    if not sanitized_query:
+        raise HTTPException(status_code=400, detail="Invalid query: too short or contains unsafe characters")
+    
     # Rate Limit Check
     tier = get_user_tier(query_payload.user_id, db)
     if not custom_limiter.is_allowed(query_payload.user_id, tier):

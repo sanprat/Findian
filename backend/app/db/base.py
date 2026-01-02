@@ -10,7 +10,8 @@ import urllib.parse
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 if DATABASE_URL:
-    print(f"DEBUG: Using provided DATABASE_URL")
+    # Don't log the full URL as it contains credentials
+    print(f"DEBUG: Using provided DATABASE_URL from environment")
 else:
     # Construct from individual credentials (Docker Compose)
     db_user = os.getenv("DB_USER")
@@ -19,12 +20,14 @@ else:
     db_host = os.getenv("DB_HOST", "db")
     
     if db_user and db_password and db_name:
-        print(f"DEBUG: Constructing DATABASE_URL from vars. User={db_user}, Host={db_host}, Name={db_name}")
+        # Mask sensitive info - only show non-sensitive parts
+        print(f"DEBUG: Constructing DATABASE_URL (Host={db_host[:3]}***, DB={db_name})")
         encoded_password = urllib.parse.quote_plus(db_password)
         DATABASE_URL = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:3306/{db_name}"
     else:
         print("❌ ERROR: No DATABASE_URL and missing DB credentials!")
-        print(f"Available Env Keys: {list(os.environ.keys())}")
+        # Don't print env keys as they may contain sensitive names
+        print(f"❌ Missing required database configuration")
 
 import time
 import socket
