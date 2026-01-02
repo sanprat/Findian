@@ -5,23 +5,25 @@ import os
 
 import urllib.parse
 
-# Construct DATABASE_URL safely if credentials are provided
-db_user = os.getenv("DB_USER")
-db_password = os.getenv("DB_PASSWORD")
-db_name = os.getenv("DB_NAME")
-db_host = os.getenv("DB_HOST", "db")
+# Construct DATABASE_URL safely
+# Priority: Use DATABASE_URL if provided (Railway), else construct from individual vars (Docker)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-if db_user and db_password and db_name:
-    print(f"DEBUG: Using breakdown vars. User={db_user}, Host={db_host}, Name={db_name}")
-    encoded_password = urllib.parse.quote_plus(db_password)
-    DATABASE_URL = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:3306/{db_name}"
+if DATABASE_URL:
+    print(f"DEBUG: Using provided DATABASE_URL")
 else:
-    # Use Railway provided URL or fallback to empty string to fail gracefully rather than asking for psycopg2
-    DATABASE_URL = os.getenv("DATABASE_URL", "")
-    print(f"DEBUG: Using DATABASE_URL. Value found: {'Yes' if DATABASE_URL else 'NO'}")
-    if not DATABASE_URL:
-        print("❌ ERROR: DATABASE_URL is missing! Checking raw environment...")
-        # print keys to see what is available (safe, keys only)
+    # Construct from individual credentials (Docker Compose)
+    db_user = os.getenv("DB_USER")
+    db_password = os.getenv("DB_PASSWORD")
+    db_name = os.getenv("DB_NAME")
+    db_host = os.getenv("DB_HOST", "db")
+    
+    if db_user and db_password and db_name:
+        print(f"DEBUG: Constructing DATABASE_URL from vars. User={db_user}, Host={db_host}, Name={db_name}")
+        encoded_password = urllib.parse.quote_plus(db_password)
+        DATABASE_URL = f"mysql+pymysql://{db_user}:{encoded_password}@{db_host}:3306/{db_name}"
+    else:
+        print("❌ ERROR: No DATABASE_URL and missing DB credentials!")
         print(f"Available Env Keys: {list(os.environ.keys())}")
 
 import time
