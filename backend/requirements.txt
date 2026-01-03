@@ -2,8 +2,6 @@ fastapi==0.109.2
 uvicorn==0.27.1
 httpx
 slowapi
-NorenRestApiPy
-pyotp
 requests
 websocket-client
 sqlalchemy==2.0.27

@@ -334,20 +334,20 @@ class AlertResponse(BaseModel):
 async def startup_event():
     """Complete startup sequence for all services."""
     logger = logging.getLogger("uvicorn")
-    
-    # Attempt Finvasia login
-    logger.info("Attempting Finvasia Login...")
+
+    # Initialize yfinance data service
+    logger.info("Initializing yfinance data service...")
     if market_data.login():
-        logger.info("✅ Connected to Market Data Feed")
+        logger.info("✅ Market Data Service Ready")
     else:
-        logger.warning("⚠️ Failed to connect to Market Data Feed")
-    
+        logger.warning("⚠️ Failed to initialize Market Data Service")
+
     # Start Scanner Loop (requires market data)
     scanner_service.start()
-    
+
     # Start Alert Monitor
     await monitor_service.start()
-    
+
     logger.info("🚀 All services started successfully")
 
 @app.get("/health")
@@ -364,10 +364,7 @@ def readiness_probe():
 
 @app.get("/health/market")
 def market_health():
-    return {
-        "connected": market_data.is_connected, 
-        "user": market_data.user_id if market_data.is_connected else None
-    }
+    return {"connected": market_data.is_connected, "source": "yfinance"}
 
 @app.post("/api/alert/create", response_model=AlertResponse)
 async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
