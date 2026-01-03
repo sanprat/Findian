@@ -79,9 +79,16 @@ def get_engine(url, retries=10, delay=5):
         try:
             connect_args = {}
 
-            # Railway MySQL requires SSL connection
+            # Railway MySQL: SSL only needed for external connections
+            # Internal connections (mysql.railway.internal) don't need SSL
             if url.startswith("mysql"):
-                connect_args = {"ssl": {"ssl_mode": "REQUIRED"}}
+                if ".railway.internal" not in url:
+                    # External connection - require SSL
+                    connect_args = {"ssl": {"ssl_mode": "REQUIRED"}}
+                    print("🔒 Using SSL for external MySQL connection")
+                else:
+                    # Internal Railway connection - no SSL needed
+                    print("🔗 Using internal Railway connection (no SSL)")
 
                 # Pre-check TCP connectivity (only on first attempt)
                 if i == 0:
