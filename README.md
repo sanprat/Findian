@@ -15,7 +15,7 @@ A conversational fintech platform that allows users to interact with the stock m
    - ✅ AI Engine: Chutes AI (Llama 3.3) for Intent Parsing & Smart Clarification
 
 2. **Market Data Engine**
-   - ✅ Hybrid Feed: Intelligent switching (Finvasia Live ↔ Yahoo Finance Fallback)
+   - ✅ Robust Feed: Pure Yahoo Finance (yfinance) integration
    - ✅ Hyper-Precision: 1-minute Price + Daily Volume/High/Low accuracy
    - ✅ Resilience: Mock Data simulation during API blackouts
 
@@ -47,15 +47,9 @@ A conversational fintech platform that allows users to interact with the stock m
 
 ## Core Capabilities
 
-### 🗣️ Natural Language Interface
-Users can type command-free queries like:
-- "Price of Reliance"
-- "Alert me when TCS crosses 3500"
-- "Show me stocks with RSI < 30"
-
-### ⚡ Hybrid Data Engine
-- **Primary**: Finvasia (Shoonya) for real-time, tick-by-tick data during market hours
-- **Fallback**: Yahoo Finance on weekends/holidays for 100% uptime
+### ⚡ Data Engine
+- **Primary**: Yahoo Finance (yfinance) for 100% uptime and 1-minute precision
+- **Stability**: Zero-login architecture with no session management required
 
 ### 🔔 Intelligent Alerts
 - Redis-backed monitoring system
@@ -75,7 +69,7 @@ Users can type command-free queries like:
 | **Backend** | FastAPI |
 | **AI Engine** | Chutes AI (Llama 3.3) |
 | **Database** | MySQL + Redis |
-| **Data Feeds** | Finvasia (Shoonya) + Yahoo Finance |
+| **Data Feeds** | Yahoo Finance (yfinance) |
 | **Container** | Docker |
 | **Memory System** | Agent Memory for AI persistence |
 

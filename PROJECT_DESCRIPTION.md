@@ -11,18 +11,13 @@ Findian is a conversational fintech platform that allows users to interact with 
 - AI engine interprets natural language to trigger actions
 - No complex commands or syntax required
 
-### ⚡ Hybrid Data Engine
-Robust dual-source architecture ensuring 100% uptime:
+### ⚡ Data Engine
+Robust yfinance-powered architecture ensuring 100% uptime:
 
-**Primary Data Source (Market Hours):**
-- Connects to Finvasia (Shoonya) for real-time data
-- Provides tick-by-tick live market data
-- Professional-grade trading data feed
-
-**Fallback Data Source:**
-- Automatically switches to Yahoo Finance
-- Active on weekends, holidays, and downtime
-- Ensures continuous chart and historical data access
+- **Primary Data Source:** Yahoo Finance (yfinance)
+- **Coverage:** Live 1-minute data + historical charts
+- **Reliability:** Active 24/7 with zero login/session requirements
+- **Resilience:** Built-in mock data fallback during API blackouts
 
 ### 🔔 Intelligent Alerts System
 - Redis-backed monitoring for high performance
@@ -46,8 +41,8 @@ Background scanning capabilities:
 
 ## Key Features
 
-1. **Always-On Availability**: Hybrid data ensures 24/7 functionality
-2. **Professional Data**: Real-time tick data from Shoonya during market hours
+1. **Always-On Availability**: 24/7 functionality with zero login overhead
+2. **Reliable Data**: Accurate price and volume data via Yahoo Finance
 3. **Smart AI**: Natural language processing for intuitive interactions
 4. **Instant Alerts**: Real-time notifications for price movements
 5. **Automated Scanning**: Continuous market monitoring for opportunities
@@ -57,8 +52,7 @@ Background scanning capabilities:
 
 - **Backend**: FastAPI (Python)
 - **Frontend**: Python-Telegram-Bot
-- **Real-time Data**: Finvasia (Shoonya) API
-- **Fallback Data**: Yahoo Finance (yfinance)
+- **Main Data Source**: Yahoo Finance (yfinance)
 - **Caching**: Redis
 - **Database**: MySQL
 - **Container**: Docker & Docker Compose
@@ -85,7 +79,7 @@ Findian/
 │   ├── app/
 │   │   ├── core/              # Core trading logic
 │   │   │   ├── ai.py          # AI and NLP processing
-│   │   │   ├── market_data.py # Data integration (Finvasia/Yahoo)
+│   │   │   ├── market_data.py # Data integration (Yahoo Finance)
 │   │   │   ├── scanner.py     # Auto-screener logic
 │   │   │   └── scheduler.py   # Background task scheduler
 │   │   ├── db/                # Database models

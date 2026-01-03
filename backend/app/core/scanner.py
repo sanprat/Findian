@@ -131,7 +131,7 @@ class MarketScannerService:
                     data_to_store = None
                     
                     try:
-                        # 1. Try Fetching Real Data (Hybrid Engine: Finvasia -> Yahoo)
+                        # 1. Fetch Real Data via Market Data Service (yfinance)
                         quote = self.md.get_quote(sym)
                         if quote:
                             ltp = quote['ltp']
