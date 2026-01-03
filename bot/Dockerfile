@@ -9,5 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Run the bot
+EXPOSE 8443
+
 CMD ["python", "main.py"]
