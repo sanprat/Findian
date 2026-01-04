@@ -1,4 +1,5 @@
 FROM python:3.11-slim
+# Cache-bust: 2026-01-04-15:06 - Force complete rebuild (Finvasia removal)
 
 WORKDIR /app
 
