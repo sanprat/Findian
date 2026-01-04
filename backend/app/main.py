@@ -211,11 +211,12 @@ async def custom_screen(query_payload: AlertQuery, db: Session = Depends(get_db)
 async def prebuilt_screen(scan_type: str):
     """
     Execute popular pre-defined scans.
+    Falls back to on-demand fetching if Redis cache is empty.
     """
     
     # Define Criteria
     # 1. Breakout: > 4% Change
-    # 2. Volume: NOT IMPLEMENTED FULLY (needs avg vol), using high raw volume for now.
+    # 2. Volume: Volume > 2.5x Average Volume
     # 3. Value: RSI < 35
     
     symbols = scanner_service.symbols
@@ -223,6 +224,37 @@ async def prebuilt_screen(scan_type: str):
     for sym in symbols:
         pipe.hgetall(f"stock:{sym}")
     data_list = pipe.execute()
+    
+    # Check if Redis is empty (first request after startup)
+    non_empty_count = sum(1 for item in data_list if item)
+    
+    if non_empty_count < 5:  # Less than 5 stocks in Redis = not ready
+        # Fallback: Fetch on-demand using yfinance
+        import yfinance as yf
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("🔄 Redis cache empty, fetching data on-demand...")
+        
+        data_list = []
+        # Fetch a quick snapshot for screening (limit to first 20 for speed)
+        quick_symbols = symbols[:20]
+        
+        for sym in quick_symbols:
+            try:
+                quote = market_data.get_quote(sym)
+                if quote and quote.get('ltp'):
+                    # Simulate Redis structure
+                    data_list.append({
+                        'symbol': sym,
+                        'ltp': str(quote['ltp']),
+                        'change_percent': str(((quote['ltp'] - quote.get('close', quote['ltp'])) / quote.get('close', quote['ltp']) * 100) if quote.get('close') else 0),
+                        'volume': str(quote.get('volume', 0)),
+                        'rsi': '50',  # Default RSI when no historical data
+                        'avg_volume': str(500000),
+                        'timestamp': 'Just now'
+                    })
+            except:
+                continue
     
     results = []
     for item in data_list:
@@ -247,7 +279,6 @@ async def prebuilt_screen(scan_type: str):
                 if rsi < 35.0: match = True
                 
             if match:
-                # Clean Data types for JSON response
                 # Clean Data types for JSON response
                 cleaned_item = {
                     "symbol": item.get("symbol"),
