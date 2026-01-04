@@ -947,17 +947,33 @@ def main():
             BotCommand("help", "❓ Help & Usage")
         ])
 
+    # Define Command Aliases (Shared for both modes)
+    async def cmd_plan_alias(u, c): 
+        # Mock message text to reuse handle_message logic
+        u.message.text = "💎 My Plan"
+        await handle_message(u, c)
+
+    async def cmd_screen_alias(u, c): 
+        u.message.text = "🔍 Screener"
+        await handle_message(u, c)
+
+    async def cmd_port_alias(u, c): 
+        u.message.text = "💼 Portfolio"
+        await handle_message(u, c)
+
+    async def cmd_help_alias(u, c):
+        await u.message.reply_text("Type 'start' for menu.")
+
     if WEBHOOK_URL:
         logger.info(f"🚀 Starting Bot in WEBHOOK mode on port {PORT}")
         # Attach post_init
         application.post_init = post_init
         
         application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("plan", lambda u,c: start(u,c))) # Reuse start or specific handler?
-        # Actually, let's just make 'plan' trigger the text handler logic for 'My Plan'
-        # But CommandHandler is cleaner.
-        # Simpler: Just rely on the menu buttons for now, adding commands is good enough.
-        # Wait, if I add "plan" command, I need a handler for it.
+        application.add_handler(CommandHandler("plan", cmd_plan_alias))
+        application.add_handler(CommandHandler("screener", cmd_screen_alias))
+        application.add_handler(CommandHandler("portfolio", cmd_port_alias))
+        application.add_handler(CommandHandler("help", cmd_help_alias))
         
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(CallbackQueryHandler(button_handler))
@@ -975,15 +991,10 @@ def main():
         application.post_init = post_init
         
         application.add_handler(CommandHandler("start", start))
-        # Add basic command aliases if user clicks menu
-        async def cmd_plan_alias(u, c): u.message.text = "💎 My Plan"; await handle_message(u, c)
-        async def cmd_screen_alias(u, c): u.message.text = "🔍 Screener"; await handle_message(u, c)
-        async def cmd_port_alias(u, c): u.message.text = "💼 Portfolio"; await handle_message(u, c)
-        
         application.add_handler(CommandHandler("plan", cmd_plan_alias))
         application.add_handler(CommandHandler("screener", cmd_screen_alias))
         application.add_handler(CommandHandler("portfolio", cmd_port_alias))
-        application.add_handler(CommandHandler("help", lambda u,c: u.message.reply_text("Type 'start' for menu.")))
+        application.add_handler(CommandHandler("help", cmd_help_alias))
 
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(CallbackQueryHandler(button_handler))
