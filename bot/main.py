@@ -65,6 +65,95 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 USER_STATES = {}
 USER_CONTEXT = {} # Stores temporary data like last_query
 
+# --- REUSABLE COMMAND FUNCTIONS (Module Level) ---
+async def show_screener_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display the Screener menu."""
+    keyboard = [
+        ["📋 Pre-built", "🤖 Custom AI"],
+        ["💾 Saved Scans", "🔙 Back"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    target = update.message if update.message else update.effective_message
+    await target.reply_text(
+        "🔍 <b>Market Screener</b>\nFind stocks using technicals or AI:\n\n"
+        "• <b>Pre-built:</b> Popular scans (Breakouts, Volume)\n"
+        "• <b>Custom AI:</b> Type 'Stocks near support'...\n"
+        "• <b>Saved:</b> Run your favorite scans",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def show_portfolio_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display the Portfolio menu."""
+    keyboard = [
+        ["➕ Add", "✏️ Modify"],
+        ["❌ Delete", "👀 View"],
+        ["🔙 Back"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    target = update.message if update.message else update.effective_message
+    await target.reply_text(
+        "💼 <b>Portfolio Management</b>\nSelect an option below:",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+async def show_plan_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display subscription plan status."""
+    user_id = update.effective_user.id
+    target = update.message if update.message else update.effective_message
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(f"{BACKEND_URL}/api/subscription/status?user_id={user_id}") as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    tier = data.get("tier", "FREE")
+                    usage = data.get("usage", 0)
+                    limit = data.get("limit", 10)
+                    
+                    # Progress Bar
+                    if tier == "ADMIN":
+                        msg = (
+                            f"💎 <b>SUBSCRIPTION PLAN</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n"
+                            f"Plan: <b>{tier}</b>\n"
+                            f"Usage: {usage} (Unlimited)\n"
+                            f"[∞∞∞∞∞∞∞∞∞∞] 100%\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n\n"
+                        )
+                    else:
+                        pct = (usage / limit) * 100 if limit > 0 else 0
+                        bar_len = 10
+                        filled = int(bar_len * pct / 100)
+                        bar = "█" * filled + "░" * (bar_len - filled)
+                        
+                        msg = (
+                            f"💎 <b>SUBSCRIPTION PLAN</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n"
+                            f"Plan: <b>{tier}</b>\n"
+                            f"Usage: {usage}/{limit} requests\n"
+                            f"[{bar}] {int(pct)}%\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n\n"
+                        )
+                    
+                    keyboard = []
+                    if tier == "FREE":
+                        msg += "💡 <i>Upgrade to get more daily requests!</i>"
+                        keyboard.append([InlineKeyboardButton("✨ Upgrade to PRO (₹199)", callback_data="sub_upgrade_pro")])
+                    elif tier == "PRO":
+                         msg += "🚀 <i>Need more power? Go Premium!</i>"
+                         keyboard.append([InlineKeyboardButton("🔥 Upgrade to PREMIUM (₹499)", callback_data="sub_upgrade_premium")])
+                    
+                    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")])
+                    
+                    await target.reply_text(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+                else:
+                    await target.reply_text("❌ Failed to fetch plan.")
+        except Exception as e:
+            logger.error(f"Subscription Error: {e}")
+            await target.reply_text("❌ Connection Error.")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages including Menu buttons and Natural Language."""
     text = update.message.text
@@ -154,92 +243,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             USER_STATES.pop(user_id, None)
             return
 
-    # --- REUSABLE COMMAND FUNCTIONS ---
-    async def show_screener_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        keyboard = [
-            ["📋 Pre-built", "🤖 Custom AI"],
-            ["💾 Saved Scans", "🔙 Back"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        # Handle both Message and CallbackQuery contexts if needed (but commands act on messages)
-        target = update.message if update.message else update.effective_message
-        await target.reply_text(
-            "🔍 <b>Market Screener</b>\nFind stocks using technicals or AI:\n\n"
-            "• <b>Pre-built:</b> Popular scans (Breakouts, Volume)\n"
-            "• <b>Custom AI:</b> Type 'Stocks near support'...\n"
-            "• <b>Saved:</b> Run your favorite scans",
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
-
-    async def show_portfolio_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        keyboard = [
-            ["➕ Add", "✏️ Modify"],
-            ["❌ Delete", "👀 View"],
-            ["🔙 Back"]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        target = update.message if update.message else update.effective_message
-        await target.reply_text(
-            "💼 <b>Portfolio Management</b>\nSelect an option below:",
-            reply_markup=reply_markup
-        )
-
-    async def show_plan_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = update.effective_user.id
-        target = update.message if update.message else update.effective_message
-        
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.get(f"{BACKEND_URL}/api/subscription/status?user_id={user_id}") as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        tier = data.get("tier", "FREE")
-                        usage = data.get("usage", 0)
-                        limit = data.get("limit", 10)
-                        
-                        # Progress Bar
-                        if tier == "ADMIN":
-                            bar = "∞" * 10
-                            msg = (
-                                f"💎 <b>SUBSCRIPTION PLAN</b>\n"
-                                f"━━━━━━━━━━━━━━━━━━━\n"
-                                f"Plan: <b>{tier}</b>\n"
-                                f"Usage: {usage} (Unlimited)\n"
-                                f"[∞∞∞∞∞∞∞∞∞∞] 100%\n"
-                                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                            )
-                        else:
-                            pct = (usage / limit) * 100 if limit > 0 else 0
-                            bar_len = 10
-                            filled = int(bar_len * pct / 100)
-                            bar = "█" * filled + "░" * (bar_len - filled)
-                            
-                            msg = (
-                                f"💎 <b>SUBSCRIPTION PLAN</b>\n"
-                                f"━━━━━━━━━━━━━━━━━━━\n"
-                                f"Plan: <b>{tier}</b>\n"
-                                f"Usage: {usage}/{limit} requests\n"
-                                f"[{bar}] {int(pct)}%\n"
-                                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                            )
-                        
-                        keyboard = []
-                        if tier == "FREE":
-                            msg += "💡 <i>Upgrade to get more daily requests!</i>"
-                            keyboard.append([InlineKeyboardButton("✨ Upgrade to PRO (₹199)", callback_data="sub_upgrade_pro")])
-                        elif tier == "PRO":
-                             msg += "🚀 <i>Need more power? Go Premium!</i>"
-                             keyboard.append([InlineKeyboardButton("🔥 Upgrade to PREMIUM (₹499)", callback_data="sub_upgrade_premium")])
-                        
-                        keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="back_to_menu")])
-                        
-                        await target.reply_text(msg, parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
-                    else:
-                        await target.reply_text("❌ Failed to fetch plan.")
-            except Exception as e:
-                logger.error(f"Subscription Error: {e}")
-                await target.reply_text("❌ Connection Error.")
 
     # --- MENU HANDLERS ---
     # Intercept Greetings or "start" keyword
