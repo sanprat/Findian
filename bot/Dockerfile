@@ -1,3 +1,4 @@
+# CACHE-BUST: 2026-01-04-v3
 FROM python:3.11-slim
 
 WORKDIR /app

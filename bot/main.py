@@ -955,14 +955,20 @@ def main():
 
     if WEBHOOK_URL:
         logger.info(f"🚀 Starting Bot in WEBHOOK mode on port {PORT}")
+        print(f"[DEBUG] WEBHOOK_URL detected: {WEBHOOK_URL}")
         # Attach post_init
         application.post_init = post_init
         
         application.add_handler(CommandHandler("start", start))
+        print("[DEBUG] Registered /start handler")
         application.add_handler(CommandHandler("plan", cmd_plan_alias))
+        print("[DEBUG] Registered /plan handler -> show_plan_status")
         application.add_handler(CommandHandler("screener", cmd_screen_alias))
+        print("[DEBUG] Registered /screener handler -> show_screener_menu")
         application.add_handler(CommandHandler("portfolio", cmd_port_alias))
+        print("[DEBUG] Registered /portfolio handler -> show_portfolio_menu")
         application.add_handler(CommandHandler("help", cmd_help_alias))
+        print("[DEBUG] Registered /help handler")
         
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(CallbackQueryHandler(button_handler))
