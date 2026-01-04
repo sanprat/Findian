@@ -151,18 +151,9 @@ class MarketScannerService:
                     except Exception as e:
                         logger.warning(f"Real Data Fetch Failed for {sym}: {e}")
                         
-                    # 2. FAILOVER: Mock Data if MD completely fails
+                    # 2. FAILOVER: Skip if MD fails (Do NOT inject random data)
                     if not data_to_store:
-                         import random
-                         base = 1000
-                         data_to_store = {
-                            "symbol": sym,
-                            "ltp": 1000,
-                            "change_percent": 0.0,
-                            "volume": 0,
-                            "avg_volume": 500000,
-                            "timestamp": "Simulated"
-                         }
+                         continue
 
                     # 3. Add Indicators (RSI/SMA) & Store
                     if data_to_store:

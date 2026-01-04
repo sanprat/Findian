@@ -55,21 +55,8 @@ class MarketDataService:
         except Exception as e:
             logger.error(f"❌ Yahoo Finance Failed for {symbol}: {str(e)}")
 
-        import random
-
-        base = random.uniform(500, 3000)
-        ltp = base * random.uniform(0.98, 1.02)
-
-        return {
-            "symbol": symbol,
-            "ltp": round(ltp, 2),
-            "volume": random.randint(50000, 500000),
-            "close": round(base, 2),
-            "high": round(ltp * 1.01, 2),
-            "low": round(ltp * 0.99, 2),
-            "open": round(base * 1.005, 2),
-            "status": "SIMULATED",
-        }
+        # No mock data - return None on failure
+        return None
 
     def get_historical_data(self, symbol: str, period: str = "1mo") -> list:
         """
