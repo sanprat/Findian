@@ -19,6 +19,8 @@ from app.core.subscription import get_user_tier
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Intelligent Alert System")
+# Last rebuild: 2026-01-04 14:59 IST
+
 
 # Security Middleware
 from fastapi.middleware.cors import CORSMiddleware
