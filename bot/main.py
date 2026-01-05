@@ -425,6 +425,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Try: 'Alert if RELIANCE > 2500' or 'Bought 50 INFY at 1400'")
         return
 
+    if text in ["🔙 Back", "Back"]:
+        await start(update, context)
+        return
+
     # --- AI PROCESSING ---
     status_msg = await update.message.reply_text("🤔 Analysing...")
     
