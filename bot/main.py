@@ -70,7 +70,7 @@ async def show_screener_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Display the Screener menu."""
     keyboard = [
         ["📋 Pre-built", "🤖 Custom AI"],
-        ["💾 Saved Scans", "🔙 Back"]
+        ["💾 Saved Scans", "🏠 Main Menu"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     target = update.message if update.message else update.effective_message
@@ -88,7 +88,7 @@ async def show_portfolio_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = [
         ["➕ Add", "✏️ Modify"],
         ["❌ Delete", "👀 View"],
-        ["🔙 Back"]
+        ["🏠 Main Menu"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     target = update.message if update.message else update.effective_message
@@ -425,7 +425,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Try: 'Alert if RELIANCE > 2500' or 'Bought 50 INFY at 1400'")
         return
 
-    if text in ["🔙 Back", "Back"]:
+    if text in ["🔙 Back", "🏠 Main Menu", "Back", "Main Menu"]:
         await start(update, context)
         return
 
