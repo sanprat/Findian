@@ -910,8 +910,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "back_to_menu":
-        await query.message.delete()
-        # Clean exit to menu logic or just let user type command
+        # Delete the old message to clean up
+        try:
+             await query.message.delete()
+        except:
+             pass
+        
+        # Send the main menu again (re-using start logic)
+        await start(update, context)
 
 def main():
     """Start the bot."""
