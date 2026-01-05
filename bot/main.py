@@ -928,16 +928,10 @@ def main():
     PORT = int(os.getenv("PORT", "8443"))
     
     
-    # Define commands list
+    # Define commands list - REMOVED to hide the "3 blue lines" menu
     async def post_init(application: Application):
-        from telegram import BotCommand
-        await application.bot.set_my_commands([
-            BotCommand("start", "Restart Bot & Menu"),
-            BotCommand("plan", "💎 My Subscription Plan"),
-            BotCommand("screener", "🔍 Stock Screener"),
-            BotCommand("portfolio", "💼 My Portfolio"),
-            BotCommand("help", "❓ Help & Usage")
-        ])
+        await application.bot.delete_my_commands()
+        logger.info("🗑️ Existing bot commands deleted (Hiding menu button)")
 
     # Define Command Aliases (Shared for both modes)
     # NOTE: Command handlers must accept (update, context)
