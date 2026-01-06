@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Force rebuild by embedding timestamp
-ARG BUILD_DATE=2026-01-04-22:34
+ARG BUILD_DATE=2026-01-05-23:05
 RUN echo "Build date: ${BUILD_DATE}"
 
 WORKDIR /app

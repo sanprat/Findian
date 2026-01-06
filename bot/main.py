@@ -162,7 +162,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- STATE HANDLING (Intercept before menu) ---
     if current_state == "WAITING_FOR_SCAN_NAME":
-        if text in ["🔙 Back", "🔍 Screener", "start", "/start"] or "Exit" in text:
+        if text in ["🔙 Back", "🏠 Main Menu", "Main Menu", "Back", "🔍 Screener", "start", "/start"] or "Exit" in text:
              USER_STATES.pop(user_id, None)
              await update.message.reply_text("❌ Save cancelled.")
              return
@@ -186,7 +186,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if current_state == "WAITING_FOR_SCAN":
-        if text in ["🔙 Back", "🔍 Screener", "start", "/start"] or "Exit" in text or "Custom AI" in text:
+        if text in ["🔙 Back", "🏠 Main Menu", "Main Menu", "Back", "🔍 Screener", "start", "/start"] or "Exit" in text or "Custom AI" in text:
              # Cancel State
              USER_STATES.pop(user_id, None)
              # Proceed to normal handling below
