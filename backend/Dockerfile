@@ -11,6 +11,9 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
+# FORCE CACHE INVALIDATION
+RUN echo "Build timestamp: 2026-01-07-22:58:00" > /tmp/timestamp.txt
+
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
