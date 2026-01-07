@@ -1,5 +1,5 @@
 FROM python:3.11-slim
-# Cache-bust: 2026-01-07-21:58 - Removed unused TA-Lib (causing memory issues)
+# Cache-bust: 2026-01-07-22:43 - Fixed CMD PORT expansion with exec form
 
 WORKDIR /app
 
@@ -22,5 +22,6 @@ COPY . .
 ENV PORT=8000
 EXPOSE $PORT
 
-# Run the application - Railway will inject $PORT
-CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Run the application - Use exec form with shell to expand $PORT
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+
