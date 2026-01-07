@@ -548,7 +548,7 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
 
             added_msgs = []
             
-           try:
+            try:
                 for item in items:
                     # Validate inputs before processing
                     from app.core.security import validate_portfolio_input
@@ -850,53 +850,6 @@ async def get_portfolio(user_id: int, db: Session = Depends(get_db)):
         "summary": summary,
         "holdings": enriched_holdings,
         "ai_insight": ai_insight
-    }
-        quote = market_data.get_quote(sym)
-        ltp = quote.get("ltp") if quote else avg_price # Fallback to avg_price if offline
-        prev_close = quote.get("close", ltp) if quote else ltp
-        high = quote.get("high", 0) if quote else 0
-        low = quote.get("low", 0) if quote else 0
-
-        current_val = qty * ltp
-        pnl = current_val - invested
-        pnl_pct = (pnl / invested * 100) if invested > 0 else 0.0
-        
-        # Day Stats
-        day_change = ltp - prev_close
-        day_change_pct = (day_change / prev_close * 100) if prev_close > 0 else 0.0
-        day_pnl = day_change * qty
-
-        total_portfolio_value += current_val
-        total_invested_value += invested
-
-        enriched_holdings.append({
-            "symbol": sym,
-            "quantity": qty,
-            "avg_price": round(avg_price, 2),
-            "ltp": ltp,
-            "current_value": round(current_val, 2),
-            "pnl": round(pnl, 2),
-            "pnl_percent": round(pnl_pct, 2),
-            "invested": round(invested, 2),
-            "day_change": round(day_change, 2),
-            "day_change_percent": round(day_change_pct, 2),
-            "day_pnl": round(day_pnl, 2),
-            "high": high,
-            "low": low
-        })
-
-    # Summary Stats
-    total_pnl = total_portfolio_value - total_invested_value
-    total_pnl_pct = (total_pnl / total_invested_value * 100) if total_invested_value > 0 else 0.0
-
-    return {
-        "user_id": user_id,
-        "summary": {
-            "total_value": round(total_portfolio_value, 2),
-            "total_pnl": round(total_pnl, 2),
-            "total_pnl_percent": round(total_pnl_pct, 2)
-        },
-        "holdings": enriched_holdings
     }
 
 @app.get("/api/portfolio/performance")
