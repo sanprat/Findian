@@ -760,7 +760,7 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
     }
 
 @app.get("/api/portfolio/list")
-def get_portfolio(user_id: int, db: Session = Depends(get_db)):
+async def get_portfolio(user_id: int, db: Session = Depends(get_db)):
     from app.db.models import Portfolio
     
     # Fetch all raw entries
@@ -798,6 +798,59 @@ def get_portfolio(user_id: int, db: Session = Depends(get_db)):
         avg_price = invested / qty if qty > 0 else 0.0
         
         # Fetch LTP
+        quote = market_data.get_quote(sym)
+        ltp = quote['ltp'] if quote else avg_price # Fallback
+        
+        current_value = qty * ltp
+        pnl = current_value - invested
+        pnl_pct = (pnl / invested * 100) if invested > 0 else 0.0
+        
+        enriched_holdings.append({
+            "symbol": sym,
+            "quantity": qty,
+            "avg_price": round(avg_price, 2),
+            "ltp": round(ltp, 2),
+            "current_value": round(current_value, 2),
+            "invested_value": round(invested, 2),
+            "pnl": round(pnl, 2),
+            "pnl_percent": round(pnl_pct, 2)
+        })
+        
+        total_portfolio_value += current_value
+        total_invested_value += invested
+
+    total_pnl = total_portfolio_value - total_invested_value
+    total_pnl_percent = (total_pnl / total_invested_value * 100) if total_invested_value > 0 else 0.0
+    
+    summary = {
+        "total_value": round(total_portfolio_value, 2),
+        "total_invested": round(total_invested_value, 2),
+        "total_pnl": round(total_pnl, 2),
+        "total_pnl_percent": round(total_pnl_percent, 2)
+    }
+
+    # --- AI INSIGHT ---
+    ai_insight = None
+    if raw_holdings:
+        try:
+            ai = AIAlertInterpreter()
+            ai_insight = await ai.generate_portfolio_summary({
+                "summary": summary, 
+                "holdings": enriched_holdings
+            })
+        except Exception as e:
+            # Fallback if AI fails (e.g., token error), so functionality isn't broken
+            import logging
+            logger = logging.getLogger("uvicorn")
+            logger.error(f"AI Summary Error: {e}")
+            ai_insight = "AI Insights currently unavailable."
+    
+    return {
+        "success": True, 
+        "summary": summary,
+        "holdings": enriched_holdings,
+        "ai_insight": ai_insight
+    }
         quote = market_data.get_quote(sym)
         ltp = quote.get("ltp") if quote else avg_price # Fallback to avg_price if offline
         prev_close = quote.get("close", ltp) if quote else ltp

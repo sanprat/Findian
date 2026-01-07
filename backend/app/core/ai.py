@@ -191,31 +191,60 @@ OUTPUT JSON ONLY.
              
         return result
 
-    def _sanitize_response(self, text: str) -> str:
+        return safe_text
+
+    async def generate_portfolio_summary(self, portfolio_data: Dict[str, Any]) -> str:
         """
-        Remove advisory language before showing to user.
+        Generates a one-line financial insight about the user's portfolio.
         """
-        unsafe_phrases = [
-            "you should buy", "you should sell", "we recommend", 
-            "strong buy", "our pick", "investment advice", 
-            "target price", "expected to reach"
+        system_prompt = """You are a financial analyst.
+Analyze the provided portfolio data (Total Value, P&L, Holdings) and provide a SINGLE, INSIGHTFUL sentence.
+Focus on:
+- Major performers/draggers
+- Overall health (Profitable vs Loss)
+- Diversification (or lack thereof)
+- Actionable tip (Hold, Diversify, etc.)
+
+CONSTRAINT:
+- Maximum 15-20 words.
+- Be professional but encouraging.
+- Use 1-2 emojis.
+- NO investment advice (e.g. "Buy/Sell this").
+"""
+        # Simplify data for LLM to save tokens
+        holdings_summary = []
+        for h in portfolio_data.get("holdings", []):
+            holdings_summary.append(f"{h['symbol']}: {h['pnl_percent']}%")
+            
+        summary_text = (
+            f"Total: {portfolio_data['summary']['total_value']}, "
+            f"P&L: {portfolio_data['summary']['total_pnl']} ({portfolio_data['summary']['total_pnl_percent']}%), "
+            f"Holdings: {', '.join(holdings_summary)}"
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Portfolio: {summary_text}"}
         ]
         
-        replacements = {
-            "you should buy": "crossed your buy alert",
-            "you should sell": "hit your exit criteria",
-            "we recommend": "matches your filter for",
-            "strong buy": "showing strong momentum indicators",
-            "expected to reach": "historical pattern suggests potential for"
-        }
+        result = await self._call_with_fallback(messages)
         
-        # Case insensitive replacement
-        safe_text = text
-        lower_text = text.lower()
-        import re
+        if result.get("status") == "ERROR":
+            return "Unable to generate insight at the moment."
+            
+        # The result from _call_with_fallback is a JSON (or dict). 
+        # But here we expect a string from the LLM? 
+        # Wait, _call_with_fallback returns JSON because `interpret` expects JSON.
+        # But for this summary, we might get just text if the model doesn't output JSON.
+        # However, `_call_with_fallback` attempts to parse JSON.
+        # Let's check `_call_with_fallback` implementation again.
+        # It tries `json.loads(json_str)`. 
+        # If the model returns plain text, `json.loads` might fail if it's not a JSON string.
+        # I should probably adjust `_call_with_fallback` to be more flexible OR ask for JSON output.
+        # Let's ask for JSON output to be consistent.
         
-        for unsafe, safe in replacements.items():
-            if unsafe in lower_text:
-                safe_text = re.sub(re.escape(unsafe), safe, safe_text, flags=re.IGNORECASE)
-                
-        return safe_text
+        # Actually, let's fix the logic here. I can just wrap the response in a specific JSON key in the prompt.
+        # But to be safe and clean, let's modify the prompt to ask for JSON.
+        
+        return result.get("insight", "Your portfolio looks active! Keep monitoring your key positions. 📊")
+

@@ -484,6 +484,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             total_val = summary.get('total_value', 0)
                             total_pnl = summary.get('total_pnl', 0)
                             total_pct = summary.get('total_pnl_percent', 0)
+                            ai_insight = data.get('ai_insight')
                             
                             pnl_emoji = "💰" if total_pnl >= 0 else "📉"
                             sign = "+" if total_pnl >= 0 else ""
@@ -491,6 +492,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             msg = "📊 <b>Your Portfolio</b>\n"
                             msg += f"Total Value: ₹{total_val:,.2f}\n"
                             msg += f"Total P&L: {sign}₹{total_pnl:,.2f} ({sign}{total_pct:,.2f}%) {pnl_emoji}\n"
+                            
+                            if ai_insight:
+                                msg += f"\n💡 <b>AI Analysis:</b>\n<i>{ai_insight}</i>\n"
+                                
                             msg += "━━━━━━━━━━━━━━━━━━━\n\n"
                             
                             # 2. HOLDINGS LIST
@@ -508,8 +513,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 
                                 msg += f"<b>{sym}</b> | {qty} shares\n"
                                 msg += f"Buy: ₹{avg:,.2f} → Now: ₹{ltp:,.2f}\n"
-                                msg += f"P&L: {row_sign}₹{pnl:,.2f} ({row_sign}{pnl_pct:,.2f}%) {row_emoji}\n"
-                                msg += f"Value: ₹{val:,.2f}\n\n"
+                                # msg += f"P&L: {row_sign}₹{pnl:,.2f} ({row_sign}{pnl_pct:,.2f}%) {row_emoji}\n" # Simplified list
+                                msg += f"Value: ₹{val:,.2f} ({row_sign}{pnl_pct:,.2f}%) {row_emoji}\n\n"
                             
                             msg += "━━━━━━━━━━━━━━━━━━━\n"
                             msg += "Last updated: Just now"

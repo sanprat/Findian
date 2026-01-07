@@ -15,3 +15,5 @@ redis
 pandas
 yfinance
 numpy
+smartapi-python
+
