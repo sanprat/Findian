@@ -92,11 +92,9 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True, index=True)
     username = Column(String(255), nullable=True)
     first_name = Column(String(255), nullable=True)
-    is_active = Column(Boolean, default=True, index=True)
-    is_premium = Column(Boolean, default=False)
-    preferences = Column(JSON, nullable=True) 
+    last_name = Column(String(255), nullable=True)
+    subscription_tier = Column(String(50), default="FREE")
     created_at = Column(DateTime, default=datetime.utcnow)
-    last_active = Column(DateTime, default=datetime.utcnow)
 
 class UserWatchlist(Base):
     __tablename__ = "user_watchlists"
@@ -135,7 +133,6 @@ class Alert(Base):
     threshold = Column(Float)
     status = Column(String(20), default="ACTIVE", index=True)  # ACTIVE, TRIGGERED, EXPIRED
     created_at = Column(DateTime, default=datetime.utcnow)
-    triggered_at = Column(DateTime, nullable=True)
 
 class TradeHistory(Base):
     __tablename__ = "trade_history"
@@ -143,11 +140,11 @@ class TradeHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
     symbol = Column(String(50), index=True)
-    action = Column(String(10))  # BUY, SELL
+    trade_type = Column(String(10))  # BUY, SELL
     quantity = Column(Integer)
     price = Column(Float)
     trade_date = Column(DateTime, default=datetime.utcnow)
-    notes = Column(Text, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
 
 # --- Scanner & System Tables ---
 
