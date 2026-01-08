@@ -9,12 +9,8 @@ def get_user_tier(user_id: str, db: Session) -> str:
     if not user:
         return "FREE"
     
-    # Check expiry
-    if user.subscription_expires_at and user.subscription_expires_at < datetime.utcnow():
-        # Expired? Downgrade logic could go here or just return FREE
-        # For now, let's just return what's in DB but treat as FREE if expired
-        # (Assuming we have a cron to downgrade, or we check on read)
-        return "FREE"
+    # Expiry check removed for MVP
+    # if user.subscription_expires_at ...
         
     return user.subscription_tier or "FREE"
 

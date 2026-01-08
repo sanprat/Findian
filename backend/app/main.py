@@ -368,6 +368,13 @@ async def startup_event():
     """Complete startup sequence for all services."""
     logger = logging.getLogger("uvicorn")
 
+    # Run Schema Migration Check
+    try:
+        from app.db.migration import check_and_fix_schema
+        check_and_fix_schema()
+    except Exception as e:
+        logger.error(f"Migration Failed: {e}")
+
     # Initialize yfinance data service
     logger.info("Initializing yfinance data service...")
     if market_data.login():
