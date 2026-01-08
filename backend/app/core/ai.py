@@ -191,8 +191,6 @@ OUTPUT JSON ONLY.
              
         return result
 
-        return safe_text
-
     async def generate_portfolio_summary(self, portfolio_data: Dict[str, Any]) -> str:
         """
         Generates a one-line financial insight about the user's portfolio.

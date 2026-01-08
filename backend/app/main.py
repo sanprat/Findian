@@ -415,73 +415,6 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
     
     result = await ai.interpret(query.query)
 
-# --- SUBSCRIPTION ENDPOINTS ---
-@app.get("/api/subscription/status")
-def get_subscription_status(user_id: str, db: Session = Depends(get_db)):
-    """Get User Tier and Usage Stats."""
-    from app.core.rate_limiter import TIER_QUOTAS
-    
-    tier = get_user_tier(user_id, db)
-    usage = custom_limiter.get_usage(user_id)
-    
-    # Parse limit from string "100/day" -> 100
-    limit_str = TIER_QUOTAS.get(tier, "10/day")
-    limit = int(limit_str.split("/")[0])
-    
-    return {
-        "tier": tier,
-        "usage": usage,
-        "limit": limit,
-        "reset_in": "24h" # Simplification
-    }
-
-class UpgradeRequest(BaseModel):
-    user_id: str
-    tier: str # PRO, PREMIUM
-
-@app.post("/api/subscription/upgrade")
-def upgrade_subscription(payload: UpgradeRequest, db: Session = Depends(get_db)):
-    """Mock Endpoint to Upgrade User."""
-    from app.core.subscription import upgrade_user
-    
-    if payload.tier not in ["FREE", "PRO", "PREMIUM"]:
-         raise HTTPException(status_code=400, detail="Invalid Tier")
-         
-    success = upgrade_user(payload.user_id, payload.tier, db)
-    if success:
-        return {"success": True, "message": f"Upgraded to {payload.tier}!"}
-    return {"success": False, "message": "User not found."}
-
-class RedeemRequest(BaseModel):
-    user_id: str
-    code: str
-
-@app.post("/api/subscription/redeem")
-def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
-    """Upgrade user to ADMIN if correct tester code is provided."""
-    import hashlib
-    from app.core.subscription import upgrade_user
-    
-    secret_code = os.getenv("TESTER_ACCESS_CODE")
-    if not secret_code:
-        raise HTTPException(status_code=500, detail="Tester code not configured on server.")
-    
-    # Secure hash comparison - never log the actual codes
-    provided_hash = hashlib.sha256(payload.code.strip().encode()).hexdigest()
-    stored_hash = hashlib.sha256(secret_code.encode()).hexdigest()
-    
-    if provided_hash == stored_hash:
-        # Upgrade to ADMIN
-        success = upgrade_user(payload.user_id, "ADMIN", db)
-        if success:
-             return {"success": True, "message": "Access Granted! You are now an Admin."}
-        return {"success": False, "message": "User not found."}
-    else:
-        # Don't reveal whether code was wrong (timing attack prevention)
-        return {"success": False, "message": "Invalid Access Code."}
-
-
-    
     # Map the AI result to our response model
     if result.get("status") == "ERROR":
         return {
@@ -497,7 +430,6 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
             "question": result.get("clarification_question"),
             "missing_info": result.get("missing_info", [])
         }
-    
     
     if result.get("status") == "CONFIRMED":
         intent = result.get("intent", "CREATE_ALERT")
@@ -537,6 +469,7 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
             data = result.get("data", {})
             from app.db.models import Portfolio
             from dateutil import parser
+            from datetime import datetime
             
             items = data.get("items", [])
             if not items and "symbol" in data:
@@ -729,7 +662,6 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
         # --- HANDLE VIEW PORTFOLIO ---
         elif intent == "VIEW_PORTFOLIO":
             # Just return a signal, Bot will fetch details via another endpoint if needed
-            # For MVP, we can fetch here or let bot call /api/portfolio
             return {
                 "success": True,
                 "status": "VIEW_PORTFOLIO_REQ",
@@ -758,6 +690,71 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
         "status": "ERROR",
         "message": "Unexpected AI response format"
     }
+
+# --- SUBSCRIPTION ENDPOINTS ---
+@app.get("/api/subscription/status")
+def get_subscription_status(user_id: str, db: Session = Depends(get_db)):
+    """Get User Tier and Usage Stats."""
+    from app.core.rate_limiter import TIER_QUOTAS
+    
+    tier = get_user_tier(user_id, db)
+    usage = custom_limiter.get_usage(user_id)
+    
+    # Parse limit from string "100/day" -> 100
+    limit_str = TIER_QUOTAS.get(tier, "10/day")
+    limit = int(limit_str.split("/")[0])
+    
+    return {
+        "tier": tier,
+        "usage": usage,
+        "limit": limit,
+        "reset_in": "24h" # Simplification
+    }
+
+class UpgradeRequest(BaseModel):
+    user_id: str
+    tier: str # PRO, PREMIUM
+
+@app.post("/api/subscription/upgrade")
+def upgrade_subscription(payload: UpgradeRequest, db: Session = Depends(get_db)):
+    """Mock Endpoint to Upgrade User."""
+    from app.core.subscription import upgrade_user
+    
+    if payload.tier not in ["FREE", "PRO", "PREMIUM"]:
+         raise HTTPException(status_code=400, detail="Invalid Tier")
+         
+    success = upgrade_user(payload.user_id, payload.tier, db)
+    if success:
+        return {"success": True, "message": f"Upgraded to {payload.tier}!"}
+    return {"success": False, "message": "User not found."}
+
+class RedeemRequest(BaseModel):
+    user_id: str
+    code: str
+
+@app.post("/api/subscription/redeem")
+def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
+    """Upgrade user to ADMIN if correct tester code is provided."""
+    import hashlib
+    from app.core.subscription import upgrade_user
+    
+    secret_code = os.getenv("TESTER_ACCESS_CODE")
+    if not secret_code:
+        raise HTTPException(status_code=500, detail="Tester code not configured on server.")
+    
+    # Secure hash comparison - never log the actual codes
+    provided_hash = hashlib.sha256(payload.code.strip().encode()).hexdigest()
+    stored_hash = hashlib.sha256(secret_code.encode()).hexdigest()
+    
+    if provided_hash == stored_hash:
+        # Upgrade to ADMIN
+        success = upgrade_user(payload.user_id, "ADMIN", db)
+        if success:
+             return {"success": True, "message": "Access Granted! You are now an Admin."}
+        return {"success": False, "message": "User not found."}
+    else:
+        # Don't reveal whether code was wrong (timing attack prevention)
+        return {"success": False, "message": "Invalid Access Code."}
 
 @app.get("/api/portfolio/list")
 async def get_portfolio(user_id: int, db: Session = Depends(get_db)):
