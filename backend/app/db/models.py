@@ -146,6 +146,31 @@ class TradeHistory(Base):
     trade_date = Column(DateTime, default=datetime.utcnow)
     realized_pnl = Column(Float, nullable=True)
 
+class Portfolio(Base):
+    """User portfolio holdings - tracks stock positions."""
+    __tablename__ = "portfolio"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    symbol = Column(String(50), index=True)
+    quantity = Column(Integer)
+    avg_price = Column(Float)
+    purchase_date = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (Index('idx_portfolio_user_symbol', 'user_id', 'symbol'),)
+
+class SavedScan(Base):
+    """User-saved custom screening queries."""
+    __tablename__ = "saved_scans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    name = Column(String(100))
+    query = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (Index('idx_saved_scan_user', 'user_id'),)
+
 # --- Scanner & System Tables ---
 
 class ScannerResult(Base):

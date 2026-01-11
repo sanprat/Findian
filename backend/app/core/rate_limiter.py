@@ -88,12 +88,28 @@ class TierRateLimiter:
     def is_allowed(self, user_id: str, tier: str) -> bool:
         """
         Checks if user is allowed based on daily quota.
+        
+        SECURITY: Validates user_id format before using as Redis key.
         """
+        # SECURITY: Validate user_id format to prevent key manipulation
+        try:
+            user_id_int = int(user_id)
+            if user_id_int <= 0 or user_id_int > 2**52:
+                logger.warning(f"Rate limit: Invalid user_id rejected: {user_id}")
+                return False
+        except (ValueError, TypeError):
+            logger.warning(f"Rate limit: Non-numeric user_id rejected")
+            return False
+        
+        # Admin tier gets unlimited access
+        if tier == "ADMIN":
+            return True
+        
         limit_count = 10
         if tier == "PRO": limit_count = 100
         elif tier == "PREMIUM": limit_count = 1000
         
-        key = f"rate_limit:{user_id}:{time.strftime('%Y-%m-%d')}"
+        key = f"rate_limit:{user_id_int}:{time.strftime('%Y-%m-%d')}"
         
         current = self.redis.get(key)
         if current and int(current) >= limit_count:
@@ -107,7 +123,15 @@ class TierRateLimiter:
 
     def get_usage(self, user_id: str) -> int:
         """Returns the current usage count for today."""
-        key = f"rate_limit:{user_id}:{time.strftime('%Y-%m-%d')}"
+        # SECURITY: Validate user_id
+        try:
+            user_id_int = int(user_id)
+            if user_id_int <= 0:
+                return 0
+        except (ValueError, TypeError):
+            return 0
+            
+        key = f"rate_limit:{user_id_int}:{time.strftime('%Y-%m-%d')}"
         current = self.redis.get(key)
         return int(current) if current else 0
 

@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Header, Security
+from fastapi.security import APIKeyHeader
 import logging
 from pydantic import BaseModel
 import os
@@ -19,13 +20,42 @@ from app.core.subscription import get_user_tier
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Intelligent Alert System")
-# Last rebuild: 2026-01-04 14:59 IST
+# Last rebuild: 2026-01-11 09:28 IST
+
+# --- API KEY AUTHENTICATION ---
+# SECURITY: All API endpoints require a valid API key from the bot
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")
+
+async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
+    """
+    SECURITY: Verify that requests come from authorized source (bot).
+    Requests without valid API key will be rejected.
+    """
+    if not API_SECRET_KEY:
+        # If no API key configured, log warning but allow (for local dev)
+        logging.warning("⚠️ API_SECRET_KEY not configured - running in insecure mode")
+        return True
+    
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+    
+    # Use timing-safe comparison
+    from app.core.security import secure_compare
+    if not secure_compare(api_key, API_SECRET_KEY):
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    
+    return True
 
 
 # Security Middleware
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import Response
+
+# Maximum request body size (1MB)
+MAX_REQUEST_SIZE = 1 * 1024 * 1024
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -35,9 +65,33 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Content Security Policy - restrictive since this is an API
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+        # Referrer Policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Prevent caching of sensitive data
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
         return response
 
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """SECURITY: Limit request body size to prevent DoS attacks."""
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > MAX_REQUEST_SIZE:
+                    return Response(
+                        content='{"detail": "Request body too large"}',
+                        status_code=413,
+                        media_type="application/json"
+                    )
+            except ValueError:
+                pass
+        return await call_next(request)
+
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
 
 # CORS - Configured for production
 # Since this is a Telegram bot backend (not web frontend), we allow:
@@ -85,23 +139,34 @@ class UserRegisterRequest(BaseModel):
 def register_user(payload: UserRegisterRequest, db: Session = Depends(get_db)):
     """Register or Update a Telegram User."""
     from app.db.models import User
+    from app.core.security import sanitize_string, sanitize_error_message, validate_user_id
+    
+    # SECURITY: Validate telegram_id
+    is_valid, validated_id = validate_user_id(payload.telegram_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
     
     try:
+        # SECURITY: Sanitize input strings
+        safe_username = sanitize_string(payload.username, max_length=255) if payload.username else None
+        safe_first_name = sanitize_string(payload.first_name, max_length=255) if payload.first_name else None
+        safe_last_name = sanitize_string(payload.last_name, max_length=255) if payload.last_name else None
+        
         # Check if user exists
-        user = db.query(User).filter(User.telegram_id == int(payload.telegram_id)).first()
+        user = db.query(User).filter(User.telegram_id == validated_id).first()
         
         if not user:
             # Create new
             user = User(
-                telegram_id=int(payload.telegram_id),
-                username=payload.username,
-                first_name=payload.first_name,
-                last_name=payload.last_name
+                telegram_id=validated_id,
+                username=safe_username,
+                first_name=safe_first_name,
+                last_name=safe_last_name
             )
             
             # Check for Admin Override
             admin_ids = os.getenv("ADMIN_IDS", "").split(",")
-            if str(payload.telegram_id) in admin_ids:
+            if str(validated_id) in admin_ids:
                 user.subscription_tier = "ADMIN"
                 
             db.add(user)
@@ -109,20 +174,22 @@ def register_user(payload: UserRegisterRequest, db: Session = Depends(get_db)):
             return {"success": True, "message": "User Registered", "user_id": user.telegram_id, "is_new": True}
         else:
             # Update existing
-            if payload.username: user.username = payload.username
-            if payload.first_name: user.first_name = payload.first_name
-            if payload.last_name: user.last_name = payload.last_name
+            if safe_username: user.username = safe_username
+            if safe_first_name: user.first_name = safe_first_name
+            if safe_last_name: user.last_name = safe_last_name
             
             # Re-check Admin (in case added to env later)
             admin_ids = os.getenv("ADMIN_IDS", "").split(",")
-            if str(payload.telegram_id) in admin_ids and user.subscription_tier != "ADMIN":
+            if str(validated_id) in admin_ids and user.subscription_tier != "ADMIN":
                 user.subscription_tier = "ADMIN"
             
             db.commit()
             return {"success": True, "message": "User Updated", "user_id": user.telegram_id, "is_new": False}
             
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        # SECURITY: Don't expose internal error details
+        logging.error(f"Registration error: {type(e).__name__}")
+        return {"success": False, "message": sanitize_error_message(e)}
 
 class AlertQuery(BaseModel):
     user_id: str
@@ -135,18 +202,24 @@ async def custom_screen(query_payload: AlertQuery, db: Session = Depends(get_db)
     2. Fetch Redis Snapshot
     3. Filter Data
     """
-    # Input Validation
-    from app.core.security import sanitize_query
+    # SECURITY: Input Validation
+    from app.core.security import sanitize_query, validate_user_id
+    
+    # Validate user_id
+    is_valid, validated_user_id = validate_user_id(query_payload.user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    
     sanitized_query = sanitize_query(query_payload.query)
     if not sanitized_query:
         raise HTTPException(status_code=400, detail="Invalid query: too short or contains unsafe characters")
     
-    # Rate Limit Check
-    tier = get_user_tier(query_payload.user_id, db)
-    if not custom_limiter.is_allowed(query_payload.user_id, tier):
+    # Rate Limit Check - use validated user_id
+    tier = get_user_tier(str(validated_user_id), db)
+    if not custom_limiter.is_allowed(str(validated_user_id), tier):
         raise HTTPException(status_code=429, detail="Daily rate limit exceeded. Upgrade to Pro/Premium for more.")
 
-    user_query = query_payload.query
+    user_query = sanitized_query  # Use sanitized query
     
     # 1. AI Parse
     ai = AIAlertInterpreter()
@@ -313,45 +386,81 @@ class SaveScanRequest(BaseModel):
 @app.post("/api/screener/save")
 def save_scan(payload: SaveScanRequest, db: Session = Depends(get_db)):
     """Save a custom query."""
+    from app.core.security import validate_user_id, sanitize_string, sanitize_error_message
+    
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(payload.user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    
+    # SECURITY: Sanitize inputs
+    safe_name = sanitize_string(payload.name, max_length=100)
+    safe_query = sanitize_string(payload.query, max_length=500)
+    
+    if not safe_name or len(safe_name) < 1:
+        raise HTTPException(status_code=400, detail="Invalid scan name")
+    
     try:
         from app.db.models import SavedScan
         new_scan = SavedScan(
-            user_id=int(payload.user_id),
-            name=payload.name,
-            query=payload.query
+            user_id=validated_user_id,
+            name=safe_name,
+            query=safe_query
         )
         db.add(new_scan)
         db.commit()
-        return {"success": True, "message": f"Saved '{payload.name}'!"}
+        return {"success": True, "message": f"Saved '{safe_name}'!"}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        logging.error(f"Save scan error: {type(e).__name__}")
+        return {"success": False, "message": sanitize_error_message(e)}
 
 @app.get("/api/screener/saved")
 def list_saved_scans(user_id: str, db: Session = Depends(get_db)):
     """List saved scans for a user."""
+    from app.core.security import validate_user_id, sanitize_error_message
+    
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    
     try:
         from app.db.models import SavedScan
-        scans = db.query(SavedScan).filter(SavedScan.user_id == int(user_id)).all()
+        scans = db.query(SavedScan).filter(SavedScan.user_id == validated_user_id).all()
         return {
             "success": True, 
             "data": [{"id": s.id, "name": s.name, "query": s.query} for s in scans]
         }
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        logging.error(f"List saved scans error: {type(e).__name__}")
+        return {"success": False, "message": sanitize_error_message(e)}
 
 @app.delete("/api/screener/saved/{scan_id}")
 def delete_saved_scan(scan_id: int, user_id: str, db: Session = Depends(get_db)):
     """Delete a saved scan."""
+    from app.core.security import validate_user_id, sanitize_error_message
+    
+    # SECURITY: Validate user_id  
+    is_valid, validated_user_id = validate_user_id(user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    
     try:
         from app.db.models import SavedScan
-        db.query(SavedScan).filter(
+        # SECURITY: Ensure user can only delete their own scans (IDOR protection)
+        deleted_count = db.query(SavedScan).filter(
             SavedScan.id == scan_id,
-            SavedScan.user_id == int(user_id)
+            SavedScan.user_id == validated_user_id
         ).delete()
         db.commit()
+        
+        if deleted_count == 0:
+            return {"success": False, "message": "Scan not found or access denied."}
+        
         return {"success": True, "message": "Scan deleted."}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        logging.error(f"Delete scan error: {type(e).__name__}")
+        return {"success": False, "message": "An error occurred. Please try again."}
 
 class AlertResponse(BaseModel):
     success: bool
@@ -412,9 +521,21 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
     Endpoint to process natural language alert requests.
     This connects to the AI Agent (Clarification Loop).
     """
-    # Rate Limit Check
-    tier = get_user_tier(query.user_id, db)
-    if not custom_limiter.is_allowed(query.user_id, tier):
+    from app.core.security import validate_user_id, sanitize_query
+    
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(query.user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    
+    # SECURITY: Sanitize query
+    sanitized_query = sanitize_query(query.query)
+    if not sanitized_query:
+        raise HTTPException(status_code=400, detail="Invalid query")
+    
+    # Rate Limit Check - use validated user_id
+    tier = get_user_tier(str(validated_user_id), db)
+    if not custom_limiter.is_allowed(str(validated_user_id), tier):
         raise HTTPException(status_code=429, detail="Daily rate limit exceeded. Upgrade to Pro/Premium for more.")
 
     # Instantiate the Chutes AI interpreter
@@ -450,7 +571,7 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 if conditions:
                     cond = conditions[0]
                     new_alert = Alert(
-                        user_id=int(query.user_id),
+                        user_id=validated_user_id,
                         symbol=config.get("symbol"),
                         indicator=cond.get("type"),
                         operator=cond.get("operator"),
@@ -469,7 +590,8 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 else:
                      return {"success": False, "status": "ERROR", "message": "No conditions found."}
             except Exception as e:
-                return {"success": False, "status": "ERROR", "message": f"Database Error: {str(e)}"}
+                logging.error(f"Alert creation error: {type(e).__name__}")
+                return {"success": False, "status": "ERROR", "message": "Database error. Please try again."}
 
         # --- HANDLE PORTFOLIO ADD ---
         elif intent == "ADD_PORTFOLIO":
@@ -512,7 +634,7 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                         p_date = datetime.utcnow()
 
                     new_entry = Portfolio(
-                        user_id=int(query.user_id),
+                        user_id=validated_user_id,
                         symbol=symbol,
                         quantity=quantity,
                         avg_price=price,
@@ -522,7 +644,7 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                     
                     # Log Trade History (BUY)
                     new_trade = TradeHistory(
-                        user_id=int(query.user_id),
+                        user_id=validated_user_id,
                         symbol=item.get("symbol"),
                         quantity=int(item.get("quantity", 0)),
                         price=float(item.get("price", 0.0)),
@@ -543,7 +665,8 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                     "message": f"💼 Added: {msg_str}!"
                 }
             except Exception as e:
-                return {"success": False, "status": "ERROR", "message": f"Portfolio DB Error: {str(e)}"}
+                logging.error(f"Portfolio add error: {type(e).__name__}")
+                return {"success": False, "status": "ERROR", "message": "Could not add to portfolio. Please try again."}
 
         # --- HANDLE PORTFOLIO SELL ---
         elif intent == "SELL_PORTFOLIO":
@@ -560,7 +683,7 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
             try:
                 # Fetch existing holdings sorted by date (FIFO)
                 holdings = db.query(Portfolio).filter(
-                    Portfolio.user_id == int(query.user_id),
+                    Portfolio.user_id == validated_user_id,
                     Portfolio.symbol == sym
                 ).order_by(Portfolio.purchase_date.asc()).all()
                 
@@ -592,7 +715,7 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                     
                 # Record Trade
                 trade = TradeHistory(
-                    user_id=int(query.user_id),
+                    user_id=validated_user_id,
                     symbol=sym,
                     quantity=qty_to_sell,
                     price=sell_price,
@@ -609,7 +732,8 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                     "message": f"💸 Sold {qty_to_sell} {sym} @ {sell_price}\nRealized P&L: {pnl_emoji} {round(total_realized_pnl, 2)}"
                 }
             except Exception as e:
-                return {"success": False, "status": "ERROR", "message": f"Sell Error: {str(e)}"}
+                logging.error(f"Portfolio sell error: {type(e).__name__}")
+                return {"success": False, "status": "ERROR", "message": "Could not process sell. Please try again."}
 
         # --- HANDLE PORTFOLIO DELETE ---
         elif intent == "DELETE_PORTFOLIO":
@@ -622,7 +746,7 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
             try:
                 # Delete all entries for this symbol
                 deleted_count = db.query(Portfolio).filter(
-                    Portfolio.user_id == int(query.user_id),
+                    Portfolio.user_id == validated_user_id,
                     Portfolio.symbol == sym
                 ).delete()
                 db.commit()
@@ -632,7 +756,8 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 else:
                     return {"success": False, "status": "ERROR", "message": f"No {sym} found in your portfolio."}
             except Exception as e:
-                return {"success": False, "status": "ERROR", "message": f"Delete Error: {str(e)}"}
+                logging.error(f"Portfolio delete error: {type(e).__name__}")
+                return {"success": False, "status": "ERROR", "message": "Could not delete. Please try again."}
 
         # --- HANDLE PORTFOLIO UPDATE ---
         elif intent == "UPDATE_PORTFOLIO":
@@ -645,7 +770,7 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
             try:
                 # Find entries
                 entries = db.query(Portfolio).filter(
-                    Portfolio.user_id == int(query.user_id),
+                    Portfolio.user_id == validated_user_id,
                     Portfolio.symbol == sym
                 ).all()
                 
@@ -664,7 +789,8 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 return {"success": True, "status": "PORTFOLIO_UPDATED", "message": f"📝 Updated {count} entries for {sym}."}
 
             except Exception as e:
-                 return {"success": False, "status": "ERROR", "message": f"Update Error: {str(e)}"}
+                logging.error(f"Portfolio update error: {type(e).__name__}")
+                return {"success": False, "status": "ERROR", "message": "Could not update. Please try again."}
 
         # --- HANDLE VIEW PORTFOLIO ---
         elif intent == "VIEW_PORTFOLIO":
@@ -703,9 +829,15 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
 def get_subscription_status(user_id: str, db: Session = Depends(get_db)):
     """Get User Tier and Usage Stats."""
     from app.core.rate_limiter import TIER_QUOTAS
+    from app.core.security import validate_user_id
     
-    tier = get_user_tier(user_id, db)
-    usage = custom_limiter.get_usage(user_id)
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    
+    tier = get_user_tier(str(validated_user_id), db)
+    usage = custom_limiter.get_usage(str(validated_user_id))
     
     # Parse limit from string "100/day" -> 100
     limit_str = TIER_QUOTAS.get(tier, "10/day")
@@ -726,11 +858,17 @@ class UpgradeRequest(BaseModel):
 def upgrade_subscription(payload: UpgradeRequest, db: Session = Depends(get_db)):
     """Mock Endpoint to Upgrade User."""
     from app.core.subscription import upgrade_user
+    from app.core.security import validate_user_id
+    
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(payload.user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
     
     if payload.tier not in ["FREE", "PRO", "PREMIUM"]:
          raise HTTPException(status_code=400, detail="Invalid Tier")
          
-    success = upgrade_user(payload.user_id, payload.tier, db)
+    success = upgrade_user(str(validated_user_id), payload.tier, db)
     if success:
         return {"success": True, "message": f"Upgraded to {payload.tier}!"}
     return {"success": False, "message": "User not found."}
@@ -742,20 +880,24 @@ class RedeemRequest(BaseModel):
 @app.post("/api/subscription/redeem")
 def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
     """Upgrade user to ADMIN if correct tester code is provided."""
-    import hashlib
     from app.core.subscription import upgrade_user
+    from app.core.security import validate_user_id, secure_compare, sanitize_string
+    
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(payload.user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
     
     secret_code = os.getenv("TESTER_ACCESS_CODE")
     if not secret_code:
         raise HTTPException(status_code=500, detail="Tester code not configured on server.")
     
-    # Secure hash comparison - never log the actual codes
-    provided_hash = hashlib.sha256(payload.code.strip().encode()).hexdigest()
-    stored_hash = hashlib.sha256(secret_code.encode()).hexdigest()
+    # SECURITY: Sanitize and use timing-safe comparison
+    provided_code = sanitize_string(payload.code, max_length=100).strip()
     
-    if provided_hash == stored_hash:
+    if secure_compare(provided_code, secret_code):
         # Upgrade to ADMIN
-        success = upgrade_user(payload.user_id, "ADMIN", db)
+        success = upgrade_user(str(validated_user_id), "ADMIN", db)
         if success:
              return {"success": True, "message": "Access Granted! You are now an Admin."}
         return {"success": False, "message": "User not found."}
@@ -766,9 +908,15 @@ def redeem_tester_code(payload: RedeemRequest, db: Session = Depends(get_db)):
 @app.get("/api/portfolio/list")
 async def get_portfolio(user_id: int, db: Session = Depends(get_db)):
     from app.db.models import Portfolio
+    from app.core.security import validate_user_id
+    
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
     
     # Fetch all raw entries
-    raw_holdings = db.query(Portfolio).filter(Portfolio.user_id == user_id).all()
+    raw_holdings = db.query(Portfolio).filter(Portfolio.user_id == validated_user_id).all()
     
     # Aggregate by Symbol
     portfolio_map = {}
@@ -863,10 +1011,16 @@ def get_portfolio_performance(user_id: int, db: Session = Depends(get_db)):
     (MVP Assumption: Current holdings were held for the entire period)
     """
     from app.db.models import Portfolio
+    from app.core.security import validate_user_id
     import pandas as pd
     
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+    
     # 1. Fetch current holdings
-    holdings = db.query(Portfolio).filter(Portfolio.user_id == user_id).all()
+    holdings = db.query(Portfolio).filter(Portfolio.user_id == validated_user_id).all()
     if not holdings:
         return {"dates": [], "values": []}
 

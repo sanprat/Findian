@@ -17,6 +17,16 @@ logger = logging.getLogger(__name__)
 # Environment variables
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BACKEND_URL = os.getenv("BACKEND_API_URL", "http://backend:8000")
+API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")
+
+def get_api_headers():
+    """
+    SECURITY: Returns headers including the API key for authenticated requests.
+    """
+    headers = {"Content-Type": "application/json"}
+    if API_SECRET_KEY:
+        headers["X-API-Key"] = API_SECRET_KEY
+    return headers
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Register User and Send Welcome Menu."""
@@ -31,7 +41,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "first_name": user.first_name,
                 "last_name": user.last_name
             }
-            async with session.post(f"{BACKEND_URL}/api/auth/register", json=payload) as resp:
+            async with session.post(f"{BACKEND_URL}/api/auth/register", json=payload, headers=get_api_headers()) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     is_new = data.get("is_new", False)
@@ -105,7 +115,7 @@ async def show_plan_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(f"{BACKEND_URL}/api/subscription/status?user_id={user_id}") as resp:
+            async with session.get(f"{BACKEND_URL}/api/subscription/status?user_id={user_id}", headers=get_api_headers()) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     tier = data.get("tier", "FREE")
@@ -176,7 +186,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         async with aiohttp.ClientSession() as session:
             payload = {"user_id": str(user_id), "name": text, "query": last_query}
-            async with session.post(f"{BACKEND_URL}/api/screener/save", json=payload) as resp:
+            async with session.post(f"{BACKEND_URL}/api/screener/save", json=payload, headers=get_api_headers()) as resp:
                 if resp.status == 200:
                     await update.message.reply_text(f"✅ Saved scan as: <b>{text}</b>", parse_mode='HTML')
                 else:
@@ -200,7 +210,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             async with aiohttp.ClientSession() as session:
                 try:
                     payload = {"user_id": str(user_id), "query": text}
-                    async with session.post(f"{BACKEND_URL}/api/screener/custom", json=payload) as resp:
+                    async with session.post(f"{BACKEND_URL}/api/screener/custom", json=payload, headers=get_api_headers()) as resp:
                         if resp.status == 200:
                             json_data = await resp.json()
                             if not json_data.get("success"):
@@ -332,7 +342,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with aiohttp.ClientSession() as session:
             try:
                 payload = {"user_id": str(user_id), "code": code}
-                async with session.post(f"{BACKEND_URL}/api/subscription/redeem", json=payload) as resp:
+                async with session.post(f"{BACKEND_URL}/api/subscription/redeem", json=payload, headers=get_api_headers()) as resp:
                     if resp.status == 200:
                         res = await resp.json()
                         if res.get("success"):
@@ -387,7 +397,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Fetch Saved Scans
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(f"{BACKEND_URL}/api/screener/saved?user_id={user_id}") as resp:
+                async with session.get(f"{BACKEND_URL}/api/screener/saved?user_id={user_id}", headers=get_api_headers()) as resp:
                     if resp.status == 200:
                         json_data = await resp.json()
                         scans = json_data.get("data", [])
@@ -436,7 +446,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{BACKEND_URL}/api/alert/create",
-                json={"user_id": str(user_id), "query": text}
+                json={"user_id": str(user_id), "query": text},
+                headers=get_api_headers()
             ) as response:
                 if response.status != 200:
                     await status_msg.edit_text("❌ Error connecting to backend.")
@@ -471,7 +482,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Fetch and display portfolio
             await status_msg.edit_text("🔄 Fetching Portfolio...")
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}") as resp:
+                async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}", headers=get_api_headers()) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         holdings = data.get("holdings", [])
@@ -539,7 +550,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await status_msg.edit_text("❓ Which stock?")
             else:
                 async with aiohttp.ClientSession() as session:
-                     async with session.get(f"{BACKEND_URL}/api/quote/{symbol}") as resp:
+                     async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
                          if resp.status == 200:
                              json_res = await resp.json()
                              if json_res.get("success"):
@@ -614,7 +625,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Let's simple Fetch-All and Find.
         
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/screener/saved?user_id={user_id}") as resp:
+            async with session.get(f"{BACKEND_URL}/api/screener/saved?user_id={user_id}", headers=get_api_headers()) as resp:
                 if resp.status == 200:
                     json_data = await resp.json()
                     scans = json_data.get("data", [])
@@ -627,7 +638,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         # No, just reuse code or call API directly. Direct API call is cleaner.
                         
                         payload = {"user_id": str(user_id), "query": query_text}
-                        async with session.post(f"{BACKEND_URL}/api/screener/custom", json=payload) as scan_resp:
+                        async with session.post(f"{BACKEND_URL}/api/screener/custom", json=payload, headers=get_api_headers()) as scan_resp:
                              # ... Same result rendering logic as Custom AI ...
                              if scan_resp.status == 200:
                                  r_json = await scan_resp.json()
@@ -649,7 +660,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("saved_del_"):
         scan_id = data.split("_")[2]
         async with aiohttp.ClientSession() as session:
-             async with session.delete(f"{BACKEND_URL}/api/screener/saved/{scan_id}?user_id={user_id}") as resp:
+             async with session.delete(f"{BACKEND_URL}/api/screener/saved/{scan_id}?user_id={user_id}", headers=get_api_headers()) as resp:
                  if resp.status == 200:
                      await query.answer("Scan Deleted!", show_alert=True)
                      # Refresh list? Ideally yes, but for now just acknowledge.
@@ -664,7 +675,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with aiohttp.ClientSession() as session:
             try:
                 # Fetch Data
-                async with session.get(f"{BACKEND_URL}/api/portfolio/performance?user_id={user_id}") as resp:
+                async with session.get(f"{BACKEND_URL}/api/portfolio/performance?user_id={user_id}", headers=get_api_headers()) as resp:
                     if resp.status == 200:
                         json_data = await resp.json()
                         dates = json_data.get("dates", [])
@@ -728,7 +739,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "p_details":
         # Fetch symbols to show selection
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}") as resp:
+            async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}", headers=get_api_headers()) as resp:
                 if resp.status == 200:
                     json_data = await resp.json()
                     holdings = json_data.get("holdings", [])
@@ -758,7 +769,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
          # I will just trigger the text handler logic via a trick or duplicate the render logic.
          # Duplicating logic for safety in this single-file edit:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}") as resp:
+                async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}", headers=get_api_headers()) as resp:
                     if resp.status == 200:
                         json_data = await resp.json()
                         holdings = json_data.get("holdings", [])
@@ -821,7 +832,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         async with aiohttp.ClientSession() as session:
             try:
-                async with session.get(f"{BACKEND_URL}/api/screener/prebuilt?scan_type={scan_type}") as resp:
+                async with session.get(f"{BACKEND_URL}/api/screener/prebuilt?scan_type={scan_type}", headers=get_api_headers()) as resp:
                     if resp.status == 200:
                         json_data = await resp.json()
                         results = json_data.get("data", [])
@@ -873,7 +884,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Fetch specific details
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}") as resp:
+            async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}", headers=get_api_headers()) as resp:
                 if resp.status == 200:
                     json_data = await resp.json()
                     holdings = json_data.get("holdings", [])
