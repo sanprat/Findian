@@ -1,5 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header, Security
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, HTTPException, Depends
 import logging
 from pydantic import BaseModel
 import os
@@ -24,28 +23,8 @@ app = FastAPI(title="AI Intelligent Alert System")
 
 # --- API KEY AUTHENTICATION ---
 # SECURITY: All API endpoints require a valid API key from the bot
-API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+# Authentication is enforced by APIKeyAuthMiddleware (global middleware)
 API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")
-
-async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
-    """
-    SECURITY: Verify that requests come from authorized source (bot).
-    Requests without valid API key will be rejected.
-    """
-    if not API_SECRET_KEY:
-        # If no API key configured, log warning but allow (for local dev)
-        logging.warning("⚠️ API_SECRET_KEY not configured - running in insecure mode")
-        return True
-    
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Missing API key")
-    
-    # Use timing-safe comparison
-    from app.core.security import secure_compare
-    if not secure_compare(api_key, API_SECRET_KEY):
-        raise HTTPException(status_code=403, detail="Invalid API key")
-    
-    return True
 
 
 # Security Middleware
@@ -138,10 +117,10 @@ app.add_middleware(RequestSizeLimitMiddleware)
 app.add_middleware(APIKeyAuthMiddleware)
 
 # CORS - Configured for production
-# Since this is a Telegram bot backend (not web frontend), we allow:
-# 1. Railway's internal network (for bot <-> backend communication)
-# 2. Localhost for local development
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://localhost:3000").split(",")
+# SECURITY: No origins allowed by default - must be explicitly configured
+# For Railway: Set ALLOWED_ORIGINS environment variable
+origin_str = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = [o.strip() for o in origin_str.split(",") if o.strip()] if origin_str else []
 
 app.add_middleware(
     CORSMiddleware,
