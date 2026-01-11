@@ -90,8 +90,52 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                 pass
         return await call_next(request)
 
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    """
+    SECURITY: Enforce API key authentication on all non-health endpoints.
+    This is a global middleware that protects ALL API routes.
+    """
+    async def dispatch(self, request: Request, call_next):
+        # Skip health check endpoints (needed for Railway/K8s probes)
+        if request.url.path.startswith("/health") or request.url.path == "/":
+            return await call_next(request)
+        
+        # Skip OpenAPI docs endpoints
+        if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+            return await call_next(request)
+        
+        # FAIL SECURE: Require API key to be configured in production
+        if not API_SECRET_KEY:
+            logging.error("SECURITY: API_SECRET_KEY not configured - rejecting request")
+            return Response(
+                content='{"detail": "Server misconfiguration: Authentication not configured"}',
+                status_code=500,
+                media_type="application/json"
+            )
+        
+        # Check for API key in header
+        api_key = request.headers.get("X-API-Key")
+        if not api_key:
+            return Response(
+                content='{"detail": "Missing X-API-Key header"}',
+                status_code=401,
+                media_type="application/json"
+            )
+        
+        # Timing-safe comparison
+        from app.core.security import secure_compare
+        if not secure_compare(api_key, API_SECRET_KEY):
+            return Response(
+                content='{"detail": "Invalid API key"}',
+                status_code=403,
+                media_type="application/json"
+            )
+        
+        return await call_next(request)
+
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(APIKeyAuthMiddleware)
 
 # CORS - Configured for production
 # Since this is a Telegram bot backend (not web frontend), we allow:

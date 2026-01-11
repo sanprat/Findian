@@ -1,6 +1,7 @@
 import os
 import logging
 import aiohttp
+import html  # SECURITY: For escaping user input in HTML output
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 
 
@@ -49,8 +50,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if is_new:
                          await update.message.reply_text("🆕 <b>Account created successfully!</b>", parse_mode='HTML')
                     else:
-                         name = user.first_name if user.first_name else "Trader"
-                         await update.message.reply_text(f"👋 Welcome Back <b>{name}</b>!", parse_mode='HTML')
+                         # SECURITY: Escape user input to prevent XSS
+                         safe_name = html.escape(user.first_name) if user.first_name else "Trader"
+                         await update.message.reply_text(f"👋 Welcome Back <b>{safe_name}</b>!", parse_mode='HTML')
 
                 else:
                     logger.error(f"Registration Failed for {user.id}")
