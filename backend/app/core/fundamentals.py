@@ -23,12 +23,17 @@ class FundamentalsService:
         """Start background fundamentals refresh"""
         if not self.is_running:
             self.is_running = True
-            # Fetch immediately on startup
-            threading.Thread(target=self._fetch_fundamentals, daemon=True).start()
-            # Schedule daily refresh
-            self._thread = threading.Thread(target=self._daily_refresh_loop, daemon=True)
-            self._thread.start()
-            logger.info("📊 Fundamentals Service Started")
+            # Delay fetch to not block startup (fetch after 30 seconds)
+            threading.Thread(target=self._delayed_fetch, daemon=True).start()
+            logger.info("📊 Fundamentals Service Started (will fetch in 30s)")
+    
+    def _delayed_fetch(self):
+        """Wait 30 seconds then fetch fundamentals"""
+        import time
+        time.sleep(30)  # Don't block startup
+        self._fetch_fundamentals()
+        # Then schedule daily refresh
+        self._daily_refresh_loop()
     
     def _daily_refresh_loop(self):
         """Refresh fundamentals every 24 hours"""

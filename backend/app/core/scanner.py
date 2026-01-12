@@ -15,13 +15,13 @@ class MarketScannerService:
         redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
         self.r = redis.from_url(redis_url, decode_responses=True)
         
-        # Nifty 50 List (Updated with correct symbols)
+        # Nifty 50 List (Updated - removed TATAMOTORS due to yfinance issues)
         self.symbols = [
             "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK", "HINDUNILVR", "SBIN", "BHARTIARTL", "ITC", "KOTAKBANK",
             "LTIM", "AXISBANK", "LT", "BAJFINANCE", "MARUTI", "ASIANPAINT", "HCLTECH", "TITAN", "SUNPHARMA", "ULTRACEMCO",
             "TATASTEEL", "NTPC", "POWERGRID", "WIPRO", "NESTLEIND", "ONGC", "M&M", "INDUSINDBK", "JSWSTEEL", "ADANIENT",
             "ADANIPORTS", "COALINDIA", "BPCL", "GRASIM", "HEROMOTOCO", "HINDALCO", "TECHM", "EICHERMOT", "DIVISLAB", "CIPLA",
-            "DRREDDY", "SBILIFE", "BAJAJFINSV", "BRITANNIA", "TATAMOTORS", "APOLLOHOSP", "TATACONSUM", "UPL"
+            "DRREDDY", "SBILIFE", "BAJAJFINSV", "BRITANNIA", "APOLLOHOSP", "TATACONSUM", "UPL"
         ]
         self.is_running = False
         self._thread = None
