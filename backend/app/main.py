@@ -576,33 +576,40 @@ class AlertResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Complete startup sequence for all services."""
+    import time
+    start_time = time.time()
     logger = logging.getLogger("uvicorn")
+    
+    logger.info("🚀 Starting backend services...")
 
-    # Initialize SmartAPI Authentication
-    try:
-        import os
-        from app.core.smart_auth import SmartApiAuth
-        from app.core.websocket_manager import WebSocketManager
-        
-        logger.info("🔐 Initializing SmartAPI Authentication...")
-        
-        # Read credentials from environment
-        api_key_1 = os.getenv("ANGEL_API_KEY_1")
-        client_code_1 = os.getenv("ANGEL_CLIENT_CODE_1")
-        pin_1 = os.getenv("ANGEL_PIN_1")
-        totp_secret_1 = os.getenv("ANGEL_TOTP_SECRET_1")
-        
-        if all([api_key_1, client_code_1, pin_1, totp_secret_1]):
+    # Initialize SmartAPI Authentication in background thread (don't block startup)
+    import threading
+    
+    def init_smartapi_background():
+        try:
+            import os
+            from app.core.smart_auth import SmartApiAuth
+            from app.core.websocket_manager import WebSocketManager
+            
+            logger.info("🔐 Initializing SmartAPI Authentication...")
+            
+            # Read credentials from environment
+            api_key_1 = os.getenv("ANGEL_API_KEY_1")
+            client_code_1 = os.getenv("ANGEL_CLIENT_CODE_1")
+            pin_1 = os.getenv("ANGEL_PIN_1")
+            totp_secret_1 = os.getenv("ANGEL_TOTP_SECRET_1")
+            
+            if not all([api_key_1, client_code_1, pin_1, totp_secret_1]):
+                logger.warning("⚠️ SmartAPI credentials not configured, skipping")
+                return
+            
             # Initialize Auth for Account 1
             auth_1 = SmartApiAuth(api_key_1, client_code_1, pin_1, totp_secret_1)
             
             if auth_1.login():
                 logger.info("✅ SmartAPI Account 1 authenticated")
-                
-                # Get tokens
                 tokens_1 = auth_1.get_tokens()
                 
-                # Prepare credentials for WebSocket Manager
                 ws_credentials = [{
                     'auth_token': tokens_1['jwt_token'],
                     'api_key': tokens_1['api_key'],
@@ -610,26 +617,7 @@ async def startup_event():
                     'feed_token': tokens_1['feed_token']
                 }]
                 
-                # Check for Account 2 (optional)
-                api_key_2 = os.getenv("ANGEL_API_KEY_2")
-                client_code_2 = os.getenv("ANGEL_CLIENT_CODE_2")
-                pin_2 = os.getenv("ANGEL_PIN_2")
-                totp_secret_2 = os.getenv("ANGEL_TOTP_SECRET_2")
-                
-                if all([api_key_2, client_code_2, pin_2, totp_secret_2]):
-                    auth_2 = SmartApiAuth(api_key_2, client_code_2, pin_2, totp_secret_2)
-                    if auth_2.login():
-                        logger.info("✅ SmartAPI Account 2 authenticated")
-                        tokens_2 = auth_2.get_tokens()
-                        ws_credentials.append({
-                            'auth_token': tokens_2['jwt_token'],
-                            'api_key': tokens_2['api_key'],
-                            'client_code': tokens_2['client_code'],
-                            'feed_token': tokens_2['feed_token']
-                        })
-                
                 # Initialize WebSocket Manager
-                logger.info("📡 Starting SmartAPI WebSocket Manager...")
                 ws_manager = WebSocketManager(ws_credentials)
                 ws_manager.start()
                 
@@ -637,53 +625,50 @@ async def startup_event():
                 from app.core.symbol_tokens import get_all_tokens
                 all_tokens = get_all_tokens()
                 logger.info(f"📊 Subscribing to {len(all_tokens)} stocks...")
-                ws_manager.subscribe(all_tokens, mode=2)  # Mode 2 = Quote
+                ws_manager.subscribe(all_tokens, mode=2)
                 
                 # Inject SmartAPI into MarketDataService
                 if hasattr(auth_1, 'smart_api') and auth_1.smart_api:
                     market_data.set_smart_api(auth_1.smart_api)
                 
-                # Store globally for later use
-                app.state.ws_manager = ws_manager
-                app.state.smart_auth = [auth_1] if len(ws_credentials) == 1 else [auth_1, auth_2]
-                
-                logger.info(f"✅ SmartAPI WebSocket Manager started with {len(ws_credentials)} connection(s)")
-                logger.info(f"✅ SmartAPI injected into MarketDataService")
+                logger.info("✅ SmartAPI WebSocket ready")
             else:
-                logger.warning("⚠️ SmartAPI authentication failed, continuing without real-time feed")
-        else:
-            logger.warning("⚠️ SmartAPI credentials not configured, skipping WebSocket initialization")
-            
-    except Exception as e:
-        logger.error(f"❌ SmartAPI initialization failed: {e}")
-        logger.warning("⚠️ Continuing without SmartAPI (using fallback data sources)")
+                logger.warning("⚠️ SmartAPI auth failed, using fallback")
+        except Exception as e:
+            logger.error(f"SmartAPI init error: {e}")
+    
+    # Start SmartAPI in background (don't wait)
+    threading.Thread(target=init_smartapi_background, daemon=True).start()
 
-    # Run Schema Migration Check
+    # Run Schema Migration Check (fast)
     try:
         from app.db.migration import check_and_fix_schema
         check_and_fix_schema()
     except Exception as e:
         logger.error(f"Migration Failed: {e}")
 
-    # Initialize market data service (SmartAPI already injected above)
+    # Initialize market data service
     logger.info("Initializing Market Data service...")
     if market_data.login():
         logger.info("✅ Market Data Service Ready")
     else:
-        logger.warning("⚠️ Failed to initialize Market Data Service")
+        logger.warning("⚠️ Market Data Service failed, using yfinance fallback")
 
-    # Start Scanner Loop (requires market data)
+    # Start Scanner Loop (runs in daemon thread)
     scanner_service.start()
     
-    # Start Fundamentals Service (for guru screeners)
+    # Start Fundamentals Service (delayed 30s, daemon thread)
     from app.core.fundamentals import FundamentalsService
     fundamentals_service = FundamentalsService(scanner_service.symbols)
     fundamentals_service.start()
     app.state.fundamentals_service = fundamentals_service
-    logger.info("📊 Fundamentals Service Started (guru screeners enabled)")
 
     # Start Alert Monitor
     await monitor_service.start()
+    
+    # Log startup time
+    elapsed = time.time() - start_time
+    logger.info(f"🚀 Backend started in {elapsed:.2f}s")
 
     # Start Railway Keepalive (prevents service sleep - critical for low latency)
     import asyncio
