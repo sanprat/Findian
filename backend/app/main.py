@@ -500,6 +500,75 @@ async def startup_event():
     """Complete startup sequence for all services."""
     logger = logging.getLogger("uvicorn")
 
+    # Initialize SmartAPI Authentication
+    try:
+        import os
+        from app.core.smart_auth import SmartApiAuth
+        from app.core.websocket_manager import WebSocketManager
+        
+        logger.info("🔐 Initializing SmartAPI Authentication...")
+        
+        # Read credentials from environment
+        api_key_1 = os.getenv("ANGEL_API_KEY_1")
+        client_code_1 = os.getenv("ANGEL_CLIENT_CODE_1")
+        pin_1 = os.getenv("ANGEL_PIN_1")
+        totp_secret_1 = os.getenv("ANGEL_TOTP_SECRET_1")
+        
+        if all([api_key_1, client_code_1, pin_1, totp_secret_1]):
+            # Initialize Auth for Account 1
+            auth_1 = SmartApiAuth(api_key_1, client_code_1, pin_1, totp_secret_1)
+            
+            if auth_1.login():
+                logger.info("✅ SmartAPI Account 1 authenticated")
+                
+                # Get tokens
+                tokens_1 = auth_1.get_tokens()
+                
+                # Prepare credentials for WebSocket Manager
+                ws_credentials = [{
+                    'auth_token': tokens_1['jwt_token'],
+                    'api_key': tokens_1['api_key'],
+                    'client_code': tokens_1['client_code'],
+                    'feed_token': tokens_1['feed_token']
+                }]
+                
+                # Check for Account 2 (optional)
+                api_key_2 = os.getenv("ANGEL_API_KEY_2")
+                client_code_2 = os.getenv("ANGEL_CLIENT_CODE_2")
+                pin_2 = os.getenv("ANGEL_PIN_2")
+                totp_secret_2 = os.getenv("ANGEL_TOTP_SECRET_2")
+                
+                if all([api_key_2, client_code_2, pin_2, totp_secret_2]):
+                    auth_2 = SmartApiAuth(api_key_2, client_code_2, pin_2, totp_secret_2)
+                    if auth_2.login():
+                        logger.info("✅ SmartAPI Account 2 authenticated")
+                        tokens_2 = auth_2.get_tokens()
+                        ws_credentials.append({
+                            'auth_token': tokens_2['jwt_token'],
+                            'api_key': tokens_2['api_key'],
+                            'client_code': tokens_2['client_code'],
+                            'feed_token': tokens_2['feed_token']
+                        })
+                
+                # Initialize WebSocket Manager
+                logger.info("📡 Starting SmartAPI WebSocket Manager...")
+                ws_manager = WebSocketManager(ws_credentials)
+                ws_manager.start()
+                
+                # Store globally for later use
+                app.state.ws_manager = ws_manager
+                app.state.smart_auth = [auth_1] if len(ws_credentials) == 1 else [auth_1, auth_2]
+                
+                logger.info(f"✅ SmartAPI WebSocket Manager started with {len(ws_credentials)} connection(s)")
+            else:
+                logger.warning("⚠️ SmartAPI authentication failed, continuing without real-time feed")
+        else:
+            logger.warning("⚠️ SmartAPI credentials not configured, skipping WebSocket initialization")
+            
+    except Exception as e:
+        logger.error(f"❌ SmartAPI initialization failed: {e}")
+        logger.warning("⚠️ Continuing without SmartAPI (using fallback data sources)")
+
     # Run Schema Migration Check
     try:
         from app.db.migration import check_and_fix_schema

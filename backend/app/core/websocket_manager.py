@@ -2,8 +2,8 @@ import logging
 import asyncio
 import json
 import threading
-from typing import List, Dict, Set
-from SmartApi.smartStream import SmartStream
+from typing import List, Dict, Set, Optional
+from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 from app.core.binary_parser import BinaryParser
 from app.core.cache import cache
 
@@ -11,63 +11,53 @@ logger = logging.getLogger(__name__)
 
 class WebSocketManager:
     """
-    Manages multiple SmartAPI WebSocket connections to handle token limits.
+    Manages multiple SmartAPI WebSocket V2 connections to handle token limits.
     """
     def __init__(self, api_credentials: List[Dict]):
         """
-        api_credentials: List of dicts {api_key, client_code, password, token, feed_token}
+        api_credentials: List of dicts {auth_token, api_key, client_code, feed_token}
         """
         self.credentials = api_credentials
-        self.connections: List[SmartStream] = []
+        self.connections: List[SmartWebSocketV2] = []
         self.subscription_map: List[Set[str]] = [] # Maps connection index to set of tokens
         self.is_running = False
 
-    def _on_data(self, ws, payload, is_binary, channel_number):
+    def _on_data(self, wsapp, message):
         """Callback for incoming WebSocket data"""
         try:
-            if is_binary:
-                # payload is memoryview or bytes
-                parsed_data = BinaryParser.parse_mode_2(bytes(payload))
-                if parsed_data:
-                    # Async dispatch to Redis/Processors
-                    # Since we are in a thread callback, we need to be careful with async
-                    # For high performance, we push to a local queue or directly to Redis if synchronous
-                    
-                    # For this implementation, we'll try to push to Redis via a helper
-                    # Or print for now to verify logic
-                    pass
-                    # logger.debug(f"Tick: {parsed_data['token']} -> {parsed_data['ltp']}")
-                    
+            # SmartWebSocketV2 already provides parsed data
+            logger.debug(f"Tick received: {message}")
+            # Store in Redis or process
+            # For now, we'll just log to verify connectivity
+            
         except Exception as e:
             logger.error(f"Error processing WS data: {e}")
 
-    def _on_open(self, ws):
-        logger.info("✅ SmartAPI WebSocket Connected")
+    def _on_open(self, wsapp):
+        logger.info("✅ SmartWebSocketV2 Connected")
 
-    def _on_close(self, ws):
-        logger.warning("⚠️ SmartAPI WebSocket Closed")
+    def _on_close(self, wsapp):
+        logger.warning("⚠️ SmartWebSocketV2 Closed")
 
-    def _on_error(self, ws, error):
-        logger.error(f"❌ SmartAPI WebSocket Error: {error}")
+    def _on_error(self, wsapp, error):
+        logger.error(f"❌ SmartWebSocketV2 Error: {error}")
 
     def start(self):
         """Initialize and start all connections"""
-        logger.info(f"Starting {len(self.credentials)} WebSocket connections...")
+        logger.info(f"Starting {len(self.credentials)} WebSocket V2 connections...")
         
         for i, creds in enumerate(self.credentials):
             try:
-                # Initialize SmartStream
-                # Note: Adjust args based on strict library version 
-                sws = SmartStream(
-                    creds['client_code'],
-                    creds['password'],
+                # Initialize SmartWebSocketV2
+                sws = SmartWebSocketV2(
+                    creds['auth_token'],
                     creds['api_key'],
-                    creds['token'],
+                    creds['client_code'],
                     creds['feed_token']
                 )
                 
                 # Assign callbacks
-                sws.on_data = lambda ws, payload, is_bin, ch=i: self._on_data(ws, payload, is_bin, ch)
+                sws.on_data = self._on_data
                 sws.on_open = self._on_open
                 sws.on_close = self._on_close
                 sws.on_error = self._on_error
@@ -84,11 +74,10 @@ class WebSocketManager:
 
         self.is_running = True
 
-    def subscribe(self, tokens: List[str], mode="LTP_QUOTE"): # CMP=1, Quote=2
+    def subscribe(self, tokens: List[str], mode=2): # mode 1=LTP, 2=Quote, 3=Snap Quote
         """
         Distribute tokens across available connections.
-        SmartAPI limit per conn is often ~1000-3000 depending on plan.
-        We load balance simply round-robin or fill-first.
+        SmartAPI V2 limit per conn is ~1000-3000 depending on plan.
         """
         if not self.connections:
             logger.error("No active connections to subscribe")
@@ -98,22 +87,26 @@ class WebSocketManager:
         current_token_idx = 0
         
         while current_token_idx < len(tokens):
-            # Find loop with minimum tokens
+            # Find connection with minimum tokens
             lens = [len(s) for s in self.subscription_map]
             min_idx = lens.index(min(lens))
             
-            # Simple chunking
-            chunk_size = 50 # Subscribe in batches
+            # Subscribe in batches
+            chunk_size = 50
             chunk = tokens[current_token_idx : current_token_idx + chunk_size]
             
-            # Create subscription packet
-            # Exchange Type: 1 (NSE), 2 (NFO)... Assuming all NSE Equity (1) for now
-            token_list = [{"exchangeType": 1, "tokens": t} for t in chunk]
+            # Create subscription packet for V2
+            # Exchange Type: 1 (NSE), 2 (NFO)... Assuming NSE Equity (1)
+            token_list = [{
+                "exchangeType": 1,
+                "tokens": chunk
+            }]
             
             try:
+                correlation_id = f"pystock_bot_{min_idx}"
                 self.connections[min_idx].subscribe(
-                    correlation_id="stock_alert_bot",
-                    mode=2, # Quote Mode
+                    correlation_id=correlation_id,
+                    mode=mode,
                     token_list=token_list
                 )
                 self.subscription_map[min_idx].update(chunk)

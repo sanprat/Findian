@@ -16,4 +16,6 @@ pandas
 yfinance
 numpy
 smartapi-python
-
+pyotp
+TA-Lib
+pandas-ta
