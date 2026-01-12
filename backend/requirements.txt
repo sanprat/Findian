@@ -17,5 +17,6 @@ yfinance
 numpy
 smartapi-python
 pyotp
+logzero
 TA-Lib
 
