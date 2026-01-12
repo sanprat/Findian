@@ -384,12 +384,13 @@ async def prebuilt_screen(scan_type: str):
             match = False
             
             if scan_type == "scan_breakout":
-                if change > 4.0: match = True
+                # Lowered threshold: >1.5% change (was 4%)
+                if abs(change) > 1.5: match = True
                 
             elif scan_type == "scan_volume":
                 avg_vol = float(item.get("avg_volume", 1_000_000))
-                # Logic: Volume > 2.5x Average Volume
-                if volume > (avg_vol * 2.5): match = True
+                # Lowered threshold: Volume > 1.2x Average (was 2.5x)
+                if volume > (avg_vol * 1.2): match = True
                 
             elif scan_type == "scan_value":
                 if rsi < 35.0: match = True
