@@ -37,7 +37,6 @@ SYMBOL_TO_TOKEN = {
     "ADANIPORTS": "15083",
     "ONGC": "2475",
     "COALINDIA": "20374",
-    "TATAMOTORS": "3456",
     "JSWSTEEL": "11723",
     "INDUSINDBK": "5258",
     "HINDALCO": "1363",
@@ -54,14 +53,37 @@ SYMBOL_TO_TOKEN = {
     "HDFCLIFE": "467",
     "BAJAJ-AUTO": "16669",
     "TATACONSUM": "3432",
-    "M&M": "10999",
+    "M&M": "2031",
     "UPL": "11287",
+    
+    # Fixed symbols (were failing)
+    "LTIM": "17818",  # Was LTI - merged to LTIMindtree
+    "TATAMOTORS": "3456",  # Fixed token
+    "ADANIENT": "25",
+    "BPCL": "526",
     
     # Bank Nifty Additional
     "BANDHANBNK": "2263",
     "FEDERALBNK": "1023",
     "IDFCFIRSTB": "11184",
     "PNB": "10666",
+    
+    # Additional Popular Stocks
+    "ZOMATO": "5097",
+    "PAYTM": "6705",
+    "NYKAA": "17558",
+    "IRCTC": "13611",
+    "TATAPOWER": "3426",
+    "ADANIGREEN": "15202",
+    "VEDL": "3063",
+    "JINDALSTEL": "6733",
+    "SAIL": "2963",
+    "NMDC": "15332",
+    "SBICARD": "41688",
+    "PIDILITIND": "2664",
+    "SIEMENS": "3150",
+    "HAVELLS": "9819",
+    "MOTHERSON": "4204",
 }
 
 # Reverse mapping for quick lookups
