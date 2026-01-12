@@ -37,40 +37,26 @@ class MarketDataService:
                     logger.warning(f"⚠️ Token not found for {symbol}, falling back to yfinance")
                     return self._get_quote_yfinance(symbol)
                 
-                # Use SmartAPI getLTP
-                mode = "LTP"  # Can be LTP, FULL, or OHLC
+                # Use SmartAPI ltpData
                 exchange_type = "NSE"
-                response = self.smart_api.ltpData(exchange_type, symbol, token)
+                trading_symbol = symbol
+                response = self.smart_api.ltpData(exchange_type, trading_symbol, token)
                 
                 if response and response.get('status'):
                     data = response.get('data', {})
                     ltp = data.get('ltp', 0)
                     
-                    # Get additional data using getQuote for full details
-                    quote_response = self.smart_api.getQuote(exchange_type, token)
-                    if quote_response and quote_response.get('status'):
-                        quote_data = quote_response.get('data', {})
-                        
-                        return {
-                            "symbol": symbol,
-                            "ltp": round(float(ltp), 2),
-                            "volume": int(quote_data.get('volume', 0)),
-                            "close": round(float(quote_data.get('close', ltp)), 2),
-                            "high": round(float(quote_data.get('high', ltp)), 2),
-                            "low": round(float(quote_data.get('low', ltp)), 2),
-                            "open": round(float(quote_data.get('open', ltp)), 2),
-                        }
-                    else:
-                        # If full quote fails, return LTP only
-                        return {
-                            "symbol": symbol,
-                            "ltp": round(float(ltp), 2),
-                            "volume": 0,
-                            "close": round(float(ltp), 2),
-                            "high": round(float(ltp), 2),
-                            "low": round(float(ltp), 2),
-                            "open": round(float(ltp), 2),
-                        }
+                    # Return basic quote with LTP
+                    # Note: Full OHLC requires historical data API
+                    return {
+                        "symbol": symbol,
+                        "ltp": round(float(ltp), 2),
+                        "volume": 0,  # Not available in ltpData
+                        "close": round(float(ltp), 2),
+                        "high": round(float(ltp), 2),
+                        "low": round(float(ltp), 2),
+                        "open": round(float(ltp), 2),
+                    }
                         
             except Exception as e:
                 logger.error(f"❌ SmartAPI Failed for {symbol}: {str(e)}")
