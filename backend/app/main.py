@@ -327,31 +327,49 @@ async def prebuilt_screen(scan_type: str):
     non_empty_count = sum(1 for item in data_list if item)
     
     if non_empty_count < 5:  # Less than 5 stocks in Redis = not ready
-        # Fallback: Fetch on-demand using yfinance
+        # Fallback: Fetch on-demand using historical data
         import yfinance as yf
         import logging
         logger = logging.getLogger(__name__)
-        logger.info("🔄 Redis cache empty, fetching data on-demand...")
+        logger.info("🔄 Redis cache empty, fetching historical data for scanner...")
         
         data_list = []
-        # Fetch a quick snapshot for screening (limit to first 20 for speed)
-        quick_symbols = symbols[:20]
+        # Fetch data for all symbols
         
-        for sym in quick_symbols:
+        for sym in symbols:
             try:
-                quote = market_data.get_quote(sym)
-                if quote and quote.get('ltp'):
-                    # Simulate Redis structure
+                # Fetch last 5 days to get at least 2 trading days
+                ticker = yf.Ticker(f"{sym}.NS")
+                hist = ticker.history(period="5d")
+                
+                if len(hist) >= 2:
+                    # Get last 2 trading days
+                    last_day = hist.iloc[-1]
+                    prev_day = hist.iloc[-2]
+                    
+                    # Calculate change from previous close
+                    ltp = float(last_day['Close'])
+                    prev_close = float(prev_day['Close'])
+                    change_pct = ((ltp - prev_close) / prev_close) * 100
+                    
+                    # Get 10-day average volume
+                    avg_volume = hist['Volume'].mean() if len(hist) > 0 else 500000
+                    
                     data_list.append({
                         'symbol': sym,
-                        'ltp': str(quote['ltp']),
-                        'change_percent': str(((quote['ltp'] - quote.get('close', quote['ltp'])) / quote.get('close', quote['ltp']) * 100) if quote.get('close') else 0),
-                        'volume': str(quote.get('volume', 0)),
-                        'rsi': '50',  # Default RSI when no historical data
-                        'avg_volume': str(500000),
-                        'timestamp': 'Just now'
+                        'ltp': str(ltp),
+                        'change_percent': str(round(change_pct, 2)),
+                        'volume': str(int(last_day['Volume'])),
+                        'rsi': '50',  # Default RSI 
+                        'avg_volume': str(int(avg_volume)),
+                        'timestamp': str(hist.index[-1].date())
                     })
-            except:
+                else:
+                    # Not enough data
+                    continue
+                    
+            except Exception as e:
+                logger.debug(f"Skipping {sym}: {e}")
                 continue
     
     results = []
