@@ -13,8 +13,8 @@ class AIAlertInterpreter:
         # Using fastest, most capable Chutes models
         self.models = [
             "MiniMaxAI/MiniMax-M2.1-TEE",
-            "deepseek/deepseek-chat-v3-0324",
-            "Qwen/Qwen3-235B-A22B"
+            "openai/gpt-oss-20b",
+            "unsloth/Mistral-Nemo-Instruct-2407"
         ]
 
     async def _call_with_fallback(self, messages: list, temperature: float = 0.1) -> Dict[str, Any]:
