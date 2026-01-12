@@ -12,9 +12,9 @@ class AIAlertInterpreter:
         self.base_url = "https://llm.chutes.ai/v1/chat/completions"
         # Using fastest, most capable Chutes models
         self.models = [
+            "MiniMaxAI/MiniMax-M2.1-TEE",
             "deepseek/deepseek-chat-v3-0324",
-            "Qwen/Qwen3-235B-A22B",
-            "meta-llama/Llama-4-Maverick-17B-128E-Instruct"
+            "Qwen/Qwen3-235B-A22B"
         ]
 
     async def _call_with_fallback(self, messages: list, temperature: float = 0.1) -> Dict[str, Any]:
