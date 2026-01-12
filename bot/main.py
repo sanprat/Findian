@@ -426,9 +426,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "👀 View":
-        # Trigger View Logic directly
-        text = "Show my portfolio" 
-        # Fallthrough to AI logic below with this text
+        # Direct portfolio fetch - no AI needed
+        status_msg = await update.message.reply_text("🔄 Fetching Portfolio...")
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(f"{BACKEND_URL}/api/portfolio/list?user_id={user_id}", headers=get_api_headers()) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        holdings = data.get("holdings", [])
+                        summary = data.get("summary", {})
+                        
+                        if not holdings:
+                            await status_msg.edit_text("💼 Your portfolio is empty.\n\nAdd stocks: 'Bought 10 TCS at 3500'")
+                            return
+                        
+                        total_val = summary.get('total_value', 0)
+                        total_pnl = summary.get('total_pnl', 0)
+                        total_pct = summary.get('total_pnl_percent', 0)
+                        
+                        pnl_emoji = "💰" if total_pnl >= 0 else "📉"
+                        sign = "+" if total_pnl >= 0 else ""
+                        
+                        msg = "📊 <b>Your Portfolio</b>\n"
+                        msg += f"Total Value: ₹{total_val:,.2f}\n"
+                        msg += f"P&L: {sign}₹{total_pnl:,.2f} ({sign}{total_pct:.2f}%) {pnl_emoji}\n"
+                        msg += "━━━━━━━━━━━━━━━\n"
+                        
+                        for h in holdings[:10]:
+                            sym = h['symbol']
+                            pnl = h['pnl']
+                            pnl_pct = h['pnl_percent']
+                            e = "🟢" if pnl >= 0 else "🔴"
+                            msg += f"{e} {sym}: {'+' if pnl >= 0 else ''}₹{pnl:,.0f} ({pnl_pct:.1f}%)\n"
+                        
+                        if len(holdings) > 10:
+                            msg += f"\n<i>...and {len(holdings)-10} more</i>"
+                        
+                        await status_msg.edit_text(msg, parse_mode='HTML')
+                    else:
+                        await status_msg.edit_text("❌ Could not fetch portfolio.")
+        except Exception as e:
+            logger.error(f"Portfolio fetch error: {e}")
+            await status_msg.edit_text("❌ Connection error.")
+        return
 
     if text == "❓ Help":
         await update.message.reply_text("Try: 'Alert if RELIANCE > 2500' or 'Bought 50 INFY at 1400'")
