@@ -363,11 +363,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- MAIN MENU ROUTING ---
     if text == "📋 Pre-built":
         # We will show the list of scans here
-        # For now, just a placeholder list
         keyboard = [
             [InlineKeyboardButton("📈 Breakout Stocks", callback_data="scan_breakout")],
             [InlineKeyboardButton("🔥 Volume Shockers", callback_data="scan_volume")],
-            [InlineKeyboardButton("💎 Value Stocks", callback_data="scan_value")]
+            [InlineKeyboardButton("💎 Value Stocks", callback_data="scan_value")],
+            [InlineKeyboardButton("━━━ 🎯 GURU STRATEGIES ━━━", callback_data="noop")],
+            [InlineKeyboardButton("🚀 Minervini Momentum", callback_data="guru_minervini")],
+            [InlineKeyboardButton("📊 Peter Lynch Value", callback_data="guru_lynch")],
+            [InlineKeyboardButton("💵 Warren Buffett", callback_data="guru_buffett")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("📋 <b>Popular Scans</b>\nSelect one to run now:", reply_markup=reply_markup, parse_mode='HTML')
@@ -876,10 +879,74 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("📈 Breakout Stocks", callback_data="scan_breakout")],
             [InlineKeyboardButton("🔥 Volume Shockers", callback_data="scan_volume")],
-            [InlineKeyboardButton("💎 Value Stocks", callback_data="scan_value")]
+            [InlineKeyboardButton("💎 Value Stocks", callback_data="scan_value")],
+            [InlineKeyboardButton("━━━ 🎯 GURU STRATEGIES ━━━", callback_data="noop")],
+            [InlineKeyboardButton("🚀 Minervini Momentum", callback_data="guru_minervini")],
+            [InlineKeyboardButton("📊 Peter Lynch Value", callback_data="guru_lynch")],
+            [InlineKeyboardButton("💵 Warren Buffett", callback_data="guru_buffett")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text("📋 <b>Popular Scans</b>\nSelect one to run now:", reply_markup=reply_markup, parse_mode='HTML')
+
+    elif data.startswith("guru_"):
+        # guru_minervini, guru_lynch, guru_buffett
+        guru_type = data.replace("guru_", "")
+        guru_titles = {
+            "minervini": "🚀 Mark Minervini (SEPA)",
+            "lynch": "📊 Peter Lynch (PEG)",
+            "buffett": "💵 Warren Buffett (Value)"
+        }
+        guru_title = guru_titles.get(guru_type, guru_type.title())
+        
+        await query.edit_message_text(f"🔄 Running {guru_title} Scan...")
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(f"{BACKEND_URL}/api/screener/guru?guru={guru_type}", headers=get_api_headers()) as resp:
+                    if resp.status == 200:
+                        json_data = await resp.json()
+                        results = json_data.get("data", [])
+                        count = json_data.get("count", 0)
+                        guru_name = json_data.get("guru", guru_title)
+                        description = json_data.get("description", "")
+                        
+                        if not results:
+                            await query.edit_message_text(
+                                f"🎯 <b>{guru_name}</b>\n<i>{description}</i>\n\n"
+                                "No stocks match this strategy right now.\n"
+                                "Fundamentals are cached daily - check back later!", 
+                                parse_mode='HTML'
+                            )
+                            return
+                        
+                        # Format Results
+                        msg = f"🎯 <b>{guru_name}</b>\n<i>{description}</i>\n\n"
+                        msg += f"<b>Matches ({count}):</b>\n"
+                        msg += f"{'Symbol':<10} {'P/E':<6} {'ROE':<6} {'Price'}\n"
+                        msg += "━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        
+                        # Show top 10
+                        for r in results[:10]:
+                            pe = r.get('pe', 0)
+                            roe = r.get('roe', 0)
+                            msg += f"{r['symbol']:<10} {pe:<6} {roe:.1f}% ₹{r['ltp']:,.0f}\n"
+                            
+                        if count > 10:
+                            msg += f"\n<i>...and {count-10} more.</i>"
+                        
+                        msg += "\n\n📊 These stocks match guru criteria.\nThis is informational only, not a recommendation."
+
+                        keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_screener")]]
+                        await query.edit_message_text(f"<pre>{msg}</pre>", parse_mode='HTML', reply_markup=InlineKeyboardMarkup(keyboard))
+                    else:
+                        await query.edit_message_text("❌ Guru Screener Unavailable.")
+            except Exception as e:
+                logger.error(f"Bot Guru Scanner Error: {e}")
+                await query.edit_message_text("❌ Error connecting to Guru Screener.")
+
+    elif data == "noop":
+        # Do nothing for separator button
+        await query.answer()
 
     elif data.startswith("stock_"):
         symbol = data.split("_")[1]

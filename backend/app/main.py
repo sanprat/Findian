@@ -419,6 +419,65 @@ async def prebuilt_screen(scan_type: str):
     return {"success": True, "count": len(results), "data": results}
     
 
+@app.get("/api/screener/guru")
+async def guru_screen(guru: str):
+    """
+    Execute guru-inspired screeners.
+    guru: 'minervini', 'lynch', 'buffett'
+    """
+    from app.core.fundamentals import apply_guru_filter, GURU_SCREENERS
+    
+    if guru not in GURU_SCREENERS:
+        return {"success": False, "error": f"Unknown guru: {guru}. Available: {list(GURU_SCREENERS.keys())}"}
+    
+    symbols = scanner_service.symbols
+    pipe = scanner_service.r.pipeline()
+    for sym in symbols:
+        pipe.hgetall(f"stock:{sym}")
+    data_list = pipe.execute()
+    
+    results = []
+    for i, item in enumerate(data_list):
+        if not item:
+            continue
+        try:
+            item["symbol"] = symbols[i]
+            
+            # Apply guru filter
+            if apply_guru_filter(item, guru):
+                ltp = float(item.get("ltp", 0))
+                pe = float(item.get("pe", 0))
+                roe = float(item.get("roe", 0))
+                high_52w = float(item.get("high_52w", 0))
+                
+                results.append({
+                    "symbol": item.get("symbol"),
+                    "ltp": ltp,
+                    "pe": round(pe, 2),
+                    "roe": round(roe, 2),
+                    "high_52w": high_52w,
+                    "pct_from_high": round(((high_52w - ltp) / high_52w) * 100, 1) if high_52w > 0 else 0,
+                    "rsi": float(item.get("rsi", 50)),
+                    "timestamp": item.get("timestamp", "Today")
+                })
+        except:
+            continue
+    
+    # Sort by best matches
+    if guru == "minervini":
+        results.sort(key=lambda x: x.get("pct_from_high", 100))  # Closest to 52w high
+    elif guru in ["lynch", "buffett"]:
+        results.sort(key=lambda x: x.get("pe", 999))  # Lowest P/E first
+    
+    guru_info = GURU_SCREENERS[guru]
+    return {
+        "success": True, 
+        "guru": guru_info["name"],
+        "description": guru_info["description"],
+        "count": len(results), 
+        "data": results
+    }
+
 
 class SaveScanRequest(BaseModel):
     user_id: str
@@ -615,6 +674,13 @@ async def startup_event():
 
     # Start Scanner Loop (requires market data)
     scanner_service.start()
+    
+    # Start Fundamentals Service (for guru screeners)
+    from app.core.fundamentals import FundamentalsService
+    fundamentals_service = FundamentalsService(scanner_service.symbols)
+    fundamentals_service.start()
+    app.state.fundamentals_service = fundamentals_service
+    logger.info("📊 Fundamentals Service Started (guru screeners enabled)")
 
     # Start Alert Monitor
     await monitor_service.start()
