@@ -10,17 +10,16 @@ class AIAlertInterpreter:
     def __init__(self):
         self.api_token = os.getenv("CHUTES_API_TOKEN")
         self.base_url = "https://llm.chutes.ai/v1/chat/completions"
-        # Using fastest, most capable Chutes models
-        self.models = [
-            "MiniMaxAI/MiniMax-M2.1-TEE",
-            "openai/gpt-oss-20b",
-            "unsloth/Mistral-Nemo-Instruct-2407"
-        ]
+        # Single fastest model - no fallback delays
+        self.model = "MiniMaxAI/MiniMax-M2.1-TEE"
 
     async def _call_with_fallback(self, messages: list, temperature: float = 0.1) -> Dict[str, Any]:
         """
-        Tries models in order. Returns the JSON parsed response of the first success.
+        Single model call with short timeout.
         """
+        import time
+        start = time.time()
+        
         if not self.api_token:
             return {"status": "ERROR", "message": "CHUTES_API_TOKEN not configured"}
 
@@ -29,47 +28,42 @@ class AIAlertInterpreter:
             "Content-Type": "application/json"
         }
 
-        last_error = None
-
-        for model in self.models:
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "stream": False
-            }
-            
-            try:
-                # logger.info(f"🤖 Attempting AI call with model: {model}")
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        self.base_url, 
-                        json=payload, 
-                        headers=headers, 
-                        timeout=30.0
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    content = result['choices'][0]['message']['content']
-                    
-                    # Extract JSON from markdown
-                    if "```" in content:
-                        start = content.find('{')
-                        end = content.rfind('}') + 1
-                        json_str = content[start:end]
-                    else:
-                        json_str = content
-                    
-                    return json.loads(json_str)
-
-            except Exception as e:
-                logger.warning(f"⚠️ AI Model {model} failed: {e}. Trying next...")
-                last_error = e
-                continue
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": False,
+            "max_tokens": 200  # Limit response size for speed
+        }
         
-        # If all failed
-        logger.error(f"❌ All AI models failed. Last error: {last_error}")
-        return {"status": "ERROR", "message": "AI Service Unavailable"}
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.base_url, 
+                    json=payload, 
+                    headers=headers, 
+                    timeout=15.0  # Reduced from 30s
+                )
+                response.raise_for_status()
+                result = response.json()
+                content = result['choices'][0]['message']['content']
+                
+                # Extract JSON from markdown
+                if "```" in content:
+                    json_start = content.find('{')
+                    json_end = content.rfind('}') + 1
+                    json_str = content[json_start:json_end]
+                else:
+                    json_str = content
+                
+                elapsed = time.time() - start
+                logger.info(f"🤖 AI responded in {elapsed:.2f}s")
+                return json.loads(json_str)
+
+        except Exception as e:
+            elapsed = time.time() - start
+            logger.error(f"❌ AI failed after {elapsed:.2f}s: {e}")
+            return {"status": "ERROR", "message": "AI Service Unavailable"}
 
     async def interpret(self, query: str) -> Dict[str, Any]:
         """
