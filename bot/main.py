@@ -33,32 +33,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Register User and Send Welcome Menu."""
     user = update.effective_user
     
-    # Register/Update User in Backend
-    async with aiohttp.ClientSession() as session:
-        try:
-            payload = {
-                "telegram_id": user.id,
-                "username": user.username,
-                "first_name": user.first_name,
-                "last_name": user.last_name
-            }
-            async with session.post(f"{BACKEND_URL}/api/auth/register", json=payload, headers=get_api_headers()) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    is_new = data.get("is_new", False)
-                    
-                    if is_new:
-                         await update.message.reply_text("🆕 <b>Account created successfully!</b>", parse_mode='HTML')
-                    else:
-                         # SECURITY: Escape user input to prevent XSS
-                         safe_name = html.escape(user.first_name) if user.first_name else "Trader"
-                         await update.message.reply_text(f"👋 Welcome Back <b>{safe_name}</b>!", parse_mode='HTML')
-
-                else:
-                    logger.error(f"Registration Failed for {user.id}")
-        except Exception as e:
-            logger.error(f"Auth Connection Error: {e}")
-
+    # Show keyboard immediately (don't wait for backend)
     keyboard = [
         [KeyboardButton("🔍 Screener"), KeyboardButton("💼 Portfolio")],
         [KeyboardButton("💎 My Plan"), KeyboardButton("📖 Readme")],
@@ -72,6 +47,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Select a mode below or just type your request!",
         reply_markup=reply_markup
     )
+    
+    # Register user in background (with timeout)
+    try:
+        timeout = aiohttp.ClientTimeout(total=5)  # 5 second timeout
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            payload = {
+                "telegram_id": user.id,
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name
+            }
+            async with session.post(f"{BACKEND_URL}/api/auth/register", json=payload, headers=get_api_headers()) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    is_new = data.get("is_new", False)
+                    if is_new:
+                        await update.message.reply_text("🆕 <b>Account created!</b>", parse_mode='HTML')
+    except Exception as e:
+        logger.warning(f"Backend registration skipped: {e}")
 
 # User States for Conversation Context (MVP memory)
 USER_STATES = {}
