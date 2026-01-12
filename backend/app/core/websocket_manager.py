@@ -25,11 +25,31 @@ class WebSocketManager:
     def _on_data(self, wsapp, message):
         """Callback for incoming WebSocket data"""
         try:
-            # SmartWebSocketV2 already provides parsed data
-            logger.debug(f"Tick received: {message}")
-            # Store in Redis or process
-            # For now, we'll just log to verify connectivity
-            
+            # SmartWebSocketV2 provides parsed data as dict
+            if isinstance(message, dict):
+                # Extract relevant fields
+                token = message.get('token')
+                ltp = message.get('last_traded_price') or message.get('ltp')
+                volume = message.get('volume_trade_for_the_day', 0)
+                
+                if token and ltp:
+                    # Get symbol from token
+                    from app.core.symbol_tokens import get_symbol
+                    symbol = get_symbol(str(token))
+                    
+                    if symbol:
+                        # Store in Redis
+                        try:
+                            cache.hset(f"stock:{symbol}", mapping={
+                                "ltp": str(ltp),
+                                "volume": str(volume),
+                                "timestamp": str(message.get('exchange_timestamp', 'now')),
+                                "token": str(token)
+                            })
+                            logger.debug(f"📊 {symbol}: ₹{ltp}")
+                        except Exception as redis_err:
+                            logger.error(f"Redis storage failed for {symbol}: {redis_err}")
+                    
         except Exception as e:
             logger.error(f"Error processing WS data: {e}")
 

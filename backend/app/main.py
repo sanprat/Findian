@@ -555,11 +555,22 @@ async def startup_event():
                 ws_manager = WebSocketManager(ws_credentials)
                 ws_manager.start()
                 
+                # Subscribe to top stocks
+                from app.core.symbol_tokens import get_all_tokens
+                all_tokens = get_all_tokens()
+                logger.info(f"📊 Subscribing to {len(all_tokens)} stocks...")
+                ws_manager.subscribe(all_tokens, mode=2)  # Mode 2 = Quote
+                
+                # Inject SmartAPI into MarketDataService
+                if hasattr(auth_1, 'smart_api') and auth_1.smart_api:
+                    market_data.set_smart_api(auth_1.smart_api)
+                
                 # Store globally for later use
                 app.state.ws_manager = ws_manager
                 app.state.smart_auth = [auth_1] if len(ws_credentials) == 1 else [auth_1, auth_2]
                 
                 logger.info(f"✅ SmartAPI WebSocket Manager started with {len(ws_credentials)} connection(s)")
+                logger.info(f"✅ SmartAPI injected into MarketDataService")
             else:
                 logger.warning("⚠️ SmartAPI authentication failed, continuing without real-time feed")
         else:
@@ -576,8 +587,8 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Migration Failed: {e}")
 
-    # Initialize yfinance data service
-    logger.info("Initializing yfinance data service...")
+    # Initialize market data service (SmartAPI already injected above)
+    logger.info("Initializing Market Data service...")
     if market_data.login():
         logger.info("✅ Market Data Service Ready")
     else:
@@ -588,6 +599,25 @@ async def startup_event():
 
     # Start Alert Monitor
     await monitor_service.start()
+
+    # Start Railway Keepalive (prevents service sleep - critical for low latency)
+    import asyncio
+    import httpx
+    
+    async def keepalive_ping():
+        """Ping /health every 4 minutes to prevent Railway sleep"""
+        while True:
+            try:
+                await asyncio.sleep(240)  # 4 minutes
+                async with httpx.AsyncClient() as client:
+                    await client.get("http://localhost:8000/health", timeout=5)
+                logger.debug("🏓 Keepalive ping sent")
+            except Exception as e:
+                logger.error(f"Keepalive ping failed: {e}")
+    
+    # Run keepalive in background
+    asyncio.create_task(keepalive_ping())
+    logger.info("🏓 Railway keepalive service started (prevents idle sleep)")
 
     logger.info("🚀 All services started successfully")
 

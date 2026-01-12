@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -7,18 +8,79 @@ logger = logging.getLogger(__name__)
 class MarketDataService:
     def __init__(self):
         self.is_connected = True
+        self.smart_api = None  # Will be injected from main.py
+
+    def set_smart_api(self, smart_api):
+        """Inject SmartConnect instance from authenticated session"""
+        self.smart_api = smart_api
+        logger.info("✅ SmartAPI injected into MarketDataService")
 
     def login(self):
         """
-        No login required for yfinance. Always returns True.
+        Login handled by SmartApiAuth. This is a compatibility method.
         """
-        logger.info("✅ yfinance initialized successfully (no credentials needed)")
+        logger.info("✅ MarketDataService initialized (using SmartAPI)")
         return True
 
-    def get_quote(self, symbol: str, exchange: str = "NSE"):
+    def get_quote(self, symbol: str, exchange: str = "NSE") -> Optional[Dict]:
         """
-        Fetch live quote (LTP) for a symbol using yfinance.
+        Fetch live quote (LTP) for a symbol using SmartAPI.
+        Falls back to yfinance if SmartAPI not available.
         """
+        # Try SmartAPI first
+        if self.smart_api:
+            try:
+                from app.core.symbol_tokens import get_token
+                
+                token = get_token(symbol)
+                if not token:
+                    logger.warning(f"⚠️ Token not found for {symbol}, falling back to yfinance")
+                    return self._get_quote_yfinance(symbol)
+                
+                # Use SmartAPI getLTP
+                mode = "LTP"  # Can be LTP, FULL, or OHLC
+                exchange_type = "NSE"
+                response = self.smart_api.ltpData(exchange_type, symbol, token)
+                
+                if response and response.get('status'):
+                    data = response.get('data', {})
+                    ltp = data.get('ltp', 0)
+                    
+                    # Get additional data using getQuote for full details
+                    quote_response = self.smart_api.getQuote(exchange_type, token)
+                    if quote_response and quote_response.get('status'):
+                        quote_data = quote_response.get('data', {})
+                        
+                        return {
+                            "symbol": symbol,
+                            "ltp": round(float(ltp), 2),
+                            "volume": int(quote_data.get('volume', 0)),
+                            "close": round(float(quote_data.get('close', ltp)), 2),
+                            "high": round(float(quote_data.get('high', ltp)), 2),
+                            "low": round(float(quote_data.get('low', ltp)), 2),
+                            "open": round(float(quote_data.get('open', ltp)), 2),
+                        }
+                    else:
+                        # If full quote fails, return LTP only
+                        return {
+                            "symbol": symbol,
+                            "ltp": round(float(ltp), 2),
+                            "volume": 0,
+                            "close": round(float(ltp), 2),
+                            "high": round(float(ltp), 2),
+                            "low": round(float(ltp), 2),
+                            "open": round(float(ltp), 2),
+                        }
+                        
+            except Exception as e:
+                logger.error(f"❌ SmartAPI Failed for {symbol}: {str(e)}")
+                return self._get_quote_yfinance(symbol)
+        
+        # Fallback to yfinance if SmartAPI not available
+        return self._get_quote_yfinance(symbol)
+
+    def _get_quote_yfinance(self, symbol: str) -> Optional[Dict]:
+        """Fallback: Fetch quote using yfinance (for unsupported symbols)"""
         try:
             import yfinance as yf
 
@@ -53,15 +115,14 @@ class MarketDataService:
                     "open": round(float(last_day["Open"]), 2),
                 }
         except Exception as e:
-            logger.error(f"❌ Yahoo Finance Failed for {symbol}: {str(e)}")
+            logger.error(f"❌ yfinance Fallback Failed for {symbol}: {str(e)}")
 
-        # No mock data - return None on failure
         return None
 
     def get_historical_data(self, symbol: str, period: str = "1mo") -> list:
         """
-        Fetch historical close prices for a symbol using yfinance.
-        Returns list of dicts: [{'date': 'YYYY-MM-DD', 'close': 123.45}, ...]
+        Fetch historical close prices for a symbol.
+        Uses yfinance for now (SmartAPI historical requires different API)
         """
         try:
             import yfinance as yf
