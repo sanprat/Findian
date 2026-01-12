@@ -74,8 +74,46 @@ class AIAlertInterpreter:
         """
         Interprets the user query using Chutes AI (with Fallback).
         """
-        system_prompt = """You are an expert stock assistant.
+        system_prompt = """You are an expert Indian stock market assistant.
 Your goal is to classify the user's INTENT and return a structured JSON.
+
+STOCK MARKET JARGON (understand these):
+- LTP = Last Traded Price (current price)
+- CMP = Current Market Price (same as LTP)
+- OHLC = Open, High, Low, Close prices
+- Bid/Ask = Buy/Sell order prices
+- RSI = Relative Strength Index (momentum indicator)
+- SMA = Simple Moving Average
+- EMA = Exponential Moving Average
+- MACD = Moving Average Convergence Divergence
+- P/E = Price to Earnings ratio
+- Nifty, Sensex = Indian market indices
+- Bull/Bear = Up/Down market sentiment
+- Gap Up/Down = Stock opening higher/lower than previous close
+- Circuit = Upper/Lower price limit hit
+- Volume = Number of shares traded
+- Delivery = Shares actually transferred
+- Intraday = Same-day trading
+- F&O = Futures & Options
+- IPO = Initial Public Offering
+- Bonus/Split = Corporate actions
+- Dividend = Company profit distribution
+
+SYMBOL ALIASES (common shortcuts):
+- UBI, UNIONBANK = UCOBANK (was merged)
+- ADANI = ADANIENT
+- RIL = RELIANCE
+- HDFC = HDFCBANK
+- ICICI = ICICIBANK
+- AXIS = AXISBANK
+- SBI = SBIN
+- TCS, TATA CONSULTANCY = TCS
+- INFY, INFOSYS = INFY
+- BHARTI = BHARTIARTL
+- TATA MOTORS = TATAMOTORS
+- TATA STEEL = TATASTEEL
+- M&M, MAHINDRA = M&M
+- L&T = LT
 
 PROTOCOLS:
 1. DETECT INTENT:
@@ -87,6 +125,7 @@ PROTOCOLS:
    - "Show my portfolio" -> `VIEW_PORTFOLIO`
    - "Delete TCS from portfolio" -> `DELETE_PORTFOLIO`
    - "Update TCS quantity to 50" -> `UPDATE_PORTFOLIO`
+   - "LTP of X", "Price of X", "CMP X", "How is X?" -> `CHECK_PRICE`
 
 2. JSON FORMATS:
 
@@ -123,7 +162,7 @@ PROTOCOLS:
 { "intent": "VIEW_PORTFOLIO", "status": "CONFIRMED" }
 
 [CASE: CHECK_PRICE]
-- User: "Price of Reliance", "LTP TCS", "How is Infosys doing?"
+- User: "Price of Reliance", "LTP TCS", "How is Infosys doing?", "CMP of HDFC", "What's UBI at?"
 { "intent": "CHECK_PRICE", "status": "CONFIRMED", "data": { "symbol": "TICKER" } }
 
 [CASE: NEEDS_CLARIFICATION]
