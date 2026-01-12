@@ -21,6 +21,7 @@ class WebSocketManager:
         self.connections: List[SmartWebSocketV2] = []
         self.subscription_map: List[Set[str]] = [] # Maps connection index to set of tokens
         self.is_running = False
+        self._ws_instances = []  # Store instances for subscription
 
     def _on_data(self, wsapp, message):
         """Callback for incoming WebSocket data"""
@@ -63,10 +64,11 @@ class WebSocketManager:
         logger.error(f"❌ SmartWebSocketV2 Error: {error}")
 
     def start(self):
-        """Initialize and start all connections"""
+        """Initialize and start all connections in background threads"""
         logger.info(f"Starting {len(self.credentials)} WebSocket V2 connections...")
         
-        for i, creds in enumerate(self.credentials):
+        def start_connection(i, creds):
+            """Start a single WebSocket connection in a thread"""
             try:
                 # Initialize SmartWebSocketV2
                 sws = SmartWebSocketV2(
@@ -82,17 +84,30 @@ class WebSocketManager:
                 sws.on_close = self._on_close
                 sws.on_error = self._on_error
                 
-                # Connect
+                # Connect (blocking call, runs in this thread)
                 sws.connect()
-                
-                self.connections.append(sws)
-                self.subscription_map.append(set())
-                logger.info(f"Connection {i+1} initialized.")
                 
             except Exception as e:
                 logger.error(f"Failed to start connection {i+1}: {e}")
+        
+        for i, creds in enumerate(self.credentials):
+            # Start each connection in its own daemon thread
+            thread = threading.Thread(
+                target=start_connection,
+                args=(i, creds),
+                daemon=True,
+                name=f"SmartWS-{i+1}"
+            )
+            thread.start()
+            self.subscription_map.append(set())
+            logger.info(f"Connection {i+1} thread started.")
+            
+            # Small delay between connections
+            import time
+            time.sleep(0.5)
 
         self.is_running = True
+        logger.info(f"✅ All {len(self.credentials)} WebSocket threads started")
 
     def subscribe(self, tokens: List[str], mode=2): # mode 1=LTP, 2=Quote, 3=Snap Quote
         """
