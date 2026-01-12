@@ -467,8 +467,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                         await status_msg.edit_text("❌ Could not fetch portfolio.")
         except Exception as e:
-            logger.error(f"Portfolio fetch error: {e}")
-            await status_msg.edit_text("❌ Connection error.")
+            logger.error(f"Portfolio fetch error: {type(e).__name__}: {e}")
+            await status_msg.edit_text(f"❌ Connection error: {type(e).__name__}")
         return
 
     if text == "❓ Help":
