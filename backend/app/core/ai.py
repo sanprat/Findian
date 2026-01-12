@@ -10,10 +10,11 @@ class AIAlertInterpreter:
     def __init__(self):
         self.api_token = os.getenv("CHUTES_API_TOKEN")
         self.base_url = "https://llm.chutes.ai/v1/chat/completions"
+        # Using fastest, most capable Chutes models
         self.models = [
-            "openai/gpt-oss-20b",
-            "zai-org/GLM-4.5-Air",
-            "Alibaba-NLP/Tongyi-DeepResearch-30B-A3B"
+            "deepseek/deepseek-chat-v3-0324",
+            "Qwen/Qwen3-235B-A22B",
+            "meta-llama/Llama-4-Maverick-17B-128E-Instruct"
         ]
 
     async def _call_with_fallback(self, messages: list, temperature: float = 0.1) -> Dict[str, Any]:
@@ -74,36 +75,21 @@ class AIAlertInterpreter:
         """
         Interprets the user query using Chutes AI (with Fallback).
         """
-        system_prompt = """You are an expert Indian stock market assistant. Classify user's INTENT and return JSON.
+        system_prompt = """Stock assistant. Return JSON only.
 
-KNOW THESE TERMS:
-Price: LTP/CMP (current price), OHLC, 52W High/Low, ATH, Bid/Ask, Volume, Delivery%
-Technical: RSI, SMA/EMA, MACD, Support/Resistance, Breakout, Gap Up/Down, Circuit, Golden/Death Cross
-Fundamental: P/E, P/B, PEG, EPS, ROE, D/E, Market Cap, Dividend Yield, FII/DII
-Trading: Intraday, BTST, Swing, Long/Short, Stop Loss, Margin, Leverage
-F&O: Futures, Options, CE/PE, Strike, Expiry, Premium, OI, ITM/OTM/ATM, Greeks
-Market: NSE, BSE, SEBI, NIFTY, SENSEX, Bank Nifty, T+1, Demat
+INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO, VIEW_PORTFOLIO, DELETE_PORTFOLIO
 
-SYMBOL ALIASES: RIL=RELIANCE, SBI=SBIN, HDFC=HDFCBANK, ICICI=ICICIBANK, AXIS=AXISBANK, LT=LT, M&M=M&M, INFY=INFY, TCS=TCS, BHARTI=BHARTIARTL, ADANI=ADANIENT, UBI=UNIONBANK
-
-INTENTS:
-- "Alert if X > Y" → CREATE_ALERT
-- "Bought/Sold X shares" → ADD/SELL_PORTFOLIO  
-- "Show portfolio" → VIEW_PORTFOLIO
-- "Delete X" → DELETE_PORTFOLIO
-- "LTP/CMP/Price of X", "How is X?" → CHECK_PRICE
-
-JSON FORMATS:
-CREATE_ALERT: {"intent":"CREATE_ALERT","status":"CONFIRMED","config":{"symbol":"TICKER","conditions":[...]}}
+JSON:
+CHECK_PRICE: {"intent":"CHECK_PRICE","status":"CONFIRMED","data":{"symbol":"TICKER"}}
+CREATE_ALERT: {"intent":"CREATE_ALERT","status":"CONFIRMED","config":{"symbol":"TICKER","conditions":[{"field":"ltp","op":"gt","value":1000}]}}
 ADD_PORTFOLIO: {"intent":"ADD_PORTFOLIO","status":"CONFIRMED","data":{"items":[{"symbol":"TICKER","quantity":10,"price":3000}]}}
 SELL_PORTFOLIO: {"intent":"SELL_PORTFOLIO","status":"CONFIRMED","data":{"symbol":"TICKER","quantity":10,"price":3500}}
-DELETE_PORTFOLIO: {"intent":"DELETE_PORTFOLIO","status":"CONFIRMED","data":{"symbol":"TICKER"}}
 VIEW_PORTFOLIO: {"intent":"VIEW_PORTFOLIO","status":"CONFIRMED"}
-CHECK_PRICE: {"intent":"CHECK_PRICE","status":"CONFIRMED","data":{"symbol":"TICKER"}} (convert aliases to NSE symbols)
-NEEDS_CLARIFICATION: {"status":"NEEDS_CLARIFICATION","question":"..."}
-REJECTED: {"status":"REJECTED","message":"..."} (for advice requests like "what to buy")
+DELETE_PORTFOLIO: {"intent":"DELETE_PORTFOLIO","status":"CONFIRMED","data":{"symbol":"TICKER"}}
+NEEDS_CLARIFICATION: {"status":"NEEDS_CLARIFICATION","question":"Which stock?"}
+REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 
-SAFETY: Never give investment advice. Reject: "What should I buy?", "Is X good?", "Predict market"
+Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN). Reject advice requests.
 """
         messages = [
             {"role": "system", "content": system_prompt},
