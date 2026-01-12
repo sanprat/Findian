@@ -95,11 +95,18 @@ class MarketScannerService:
         logger.info("ℹ️ Scanner Loop Running...")
         import yfinance as yf
         import pandas as pd
+        from datetime import datetime, time as dt_time
         
         while self.is_running:
             try:
-                # 1. BATCH FETCH HISTORY (For Indicators)
-                # Fetching 1mo history for all symbols to calculate RSI
+                # Check if market is open (Mon-Fri, 9:15 AM - 3:30 PM IST)
+                now = datetime.now()
+                is_weekend = now.weekday() >= 5  # Saturday=5, Sunday=6
+                market_start = dt_time(9, 15)
+                market_end = dt_time(15, 30)
+                is_market_hours = market_start <= now.time() <= market_end and not is_weekend
+                
+                # 1. BATCH FETCH HISTORY (For Indicators and weekend data)
                 tickers_list = [f"{sym}.NS" for sym in self.symbols]
                 tickers_str = " ".join(tickers_list)
                 history_map = {}
@@ -109,14 +116,13 @@ class MarketScannerService:
                     for sym in self.symbols:
                         try:
                             # yfinance logic to extract DF for symbol
-                            # If only 1 symbol, data is the DF. If multiple, data is Dict-like/MultiIndex
                             try:
                                 df = data[f"{sym}.NS"] if len(self.symbols) > 1 else data
                             except KeyError:
                                 df = None
                                 
                             if df is not None and not df.empty:
-                                # Clean MultiIndex cols if present [('Close', 'RELIANCE.NS')] -> 'Close'
+                                # Clean MultiIndex cols if present
                                 if isinstance(df.columns, pd.MultiIndex):
                                     df.columns = df.columns.droplevel(1)
                                 history_map[sym] = df
@@ -131,27 +137,51 @@ class MarketScannerService:
                     data_to_store = None
                     
                     try:
-                        # 1. Fetch Real Data via Market Data Service (yfinance)
-                        quote = self.md.get_quote(sym)
-                        if quote:
-                            ltp = quote['ltp']
-                            prev_close = quote['close']
-                            change_pct = ((ltp - prev_close) / prev_close) * 100 if prev_close > 0 else 0
-                             
-                            data_to_store = {
-                                "symbol": sym,
-                                "ltp": ltp,
-                                "change_percent": round(change_pct, 2),
-                                "volume": quote.get('volume', 0),
-                                "high": quote.get('high', 0),
-                                "low": quote.get('low', 0),
-                                "prev_close": prev_close,
-                                "avg_volume": int(self.avg_volumes.get(sym, 0)) # Inject Baseline
-                            }
+                        if is_market_hours:
+                            # Market is open - use live quotes
+                            quote = self.md.get_quote(sym)
+                            if quote:
+                                ltp = quote['ltp']
+                                prev_close = quote['close']
+                                change_pct = ((ltp - prev_close) / prev_close) * 100 if prev_close > 0 else 0
+                                 
+                                data_to_store = {
+                                    "symbol": sym,
+                                    "ltp": ltp,
+                                    "change_percent": round(change_pct, 2),
+                                    "volume": quote.get('volume', 0),
+                                    "high": quote.get('high', 0),
+                                    "low": quote.get('low', 0),
+                                    "prev_close": prev_close,
+                                    "avg_volume": int(self.avg_volumes.get(sym, 0))
+                                }
+                        else:
+                            # Market is closed - use historical data (last 2 trading days)
+                            if sym in history_map:
+                                df = history_map[sym]
+                                if len(df) >= 2:
+                                    last_day = df.iloc[-1]
+                                    prev_day = df.iloc[-2]
+                                    
+                                    ltp = float(last_day['Close'])
+                                    prev_close = float(prev_day['Close'])
+                                    change_pct = ((ltp - prev_close) / prev_close) * 100
+                                    
+                                    data_to_store = {
+                                        "symbol": sym,
+                                        "ltp": ltp,
+                                        "change_percent": round(change_pct, 2),
+                                        "volume": int(last_day['Volume']),
+                                        "high": float(last_day['High']),
+                                        "low": float(last_day['Low']),
+                                        "prev_close": prev_close,
+                                        "avg_volume": int(self.avg_volumes.get(sym, 0))
+                                    }
+                                    
                     except Exception as e:
-                        logger.warning(f"Real Data Fetch Failed for {sym}: {e}")
+                        logger.warning(f"Data Fetch Failed for {sym}: {e}")
                         
-                    # 2. FAILOVER: Skip if MD fails (Do NOT inject random data)
+                    # 2. FAILOVER: Skip if data fetch fails
                     if not data_to_store:
                          continue
 
