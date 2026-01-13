@@ -490,7 +490,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 headers=get_api_headers()
             ) as response:
                 if response.status != 200:
-                    await status_msg.edit_text("❌ Error connecting to backend.")
+                    text = await response.text()
+                    await status_msg.edit_text(f"❌ Backend Error {response.status}: {text[:50]}")
                     return
                 
                 result = await response.json()
