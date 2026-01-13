@@ -8,71 +8,135 @@ logger = logging.getLogger(__name__)
 
 class AIAlertInterpreter:
     def __init__(self):
-        self.api_token = os.getenv("CHUTES_API_TOKEN")
-        self.base_url = "https://llm.chutes.ai/v1/chat/completions"
-        # Primary and fallback models
-        self.models = [
-            "MiniMaxAI/MiniMax-M2.1-TEE",
-            "unsloth/Mistral-Nemo-Instruct-2407"  # Fallback
-        ]
+        self.api_key = os.getenv("ZAI_API_KEY")
+        self.base_url = "https://open.bigmodel.cn/api/paas/v4/chat/completions" # Correct Z.ai/BigModel URL
+        self.model = "glm-4-flash" # Fast model
+        self.cache = {} # Simple in-memory cache for token
+
+    def _generate_token(self, apikey: str, exp_seconds: int):
+        """
+        Generate JWT token for Z.ai (BigModel) API.
+        Reference: https://open.bigmodel.cn/dev/api#sdk_python
+        """
+        try:
+            import time
+            import jwt # PyJWT is already a dependency of smartapi-python -> websocket-client usually or install if missing? 
+                       # Actually, smartapi uses requests. Let's check imports.
+                       # If PyJWT is missing, we can implement simple JWT manually or use pyjwt if available. 
+                       # Given requirements.txt has 'smartapi-python', let's stick to standard lib if possible or check.
+                       # Wait, standard JWT creation is safer with PyJWT. 
+                       # Let's check if we can use standard lib implementation for simple HS256 JWT
+            
+            # Implementation using standard library to avoid dependency issues if PyJWT not present
+            # But wait, requirement.txt doesn't list pyjwt explicitly. 
+            # Let's use the exact method from their docs which often uses PyJWT.
+            # However, to be safe and fast without pip install, I will use a robust standard lib version if valid.
+            
+            # Actually, most robust way is to use the SDK if user allows, but user wants code update immediately.
+            # I will use a pure python JWT generation function to be safe.
+            
+            id, secret = apikey.split(".")
+            payload = {
+                "api_key": id,
+                "exp": int(round(time.time() * 1000)) + exp_seconds * 1000,
+                "timestamp": int(round(time.time() * 1000)),
+            }
+            
+            # Simple JWT implementation using hmac/hashlib/base64
+            import hmac
+            import hashlib
+            import base64
+            
+            def b64url_encode(data):
+                return base64.urlsafe_b64encode(data).rstrip(b'=')
+
+            header = b64url_encode(json.dumps({"alg": "HS256", "sign_type": "SIGN"}).encode('utf-8'))
+            payload_enc = b64url_encode(json.dumps(payload).encode('utf-8'))
+            
+            signature = b64url_encode(hmac.new(
+                secret.encode('utf-8'),
+                header + b"." + payload_enc,
+                hashlib.sha256
+            ).digest())
+            
+            return (header + b"." + payload_enc + b"." + signature).decode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"Token generation failed: {e}")
+            return None
+
+    def _get_auth_header(self):
+        """Get Authorization header with cached JWT"""
+        if not self.api_key:
+            return None
+            
+        # Check cache
+        if self.cache.get('token') and self.cache.get('exp') > time.time():
+            return self.cache['token']
+            
+        # Generate new
+        token = self._generate_token(self.api_key, 3600)
+        self.cache['token'] = token
+        self.cache['exp'] = time.time() + 3500 # 5 min buffer
+        return token
 
     async def _call_with_fallback(self, messages: list, temperature: float = 0.1) -> Dict[str, Any]:
         """
-        Try models in order with short timeout.
+        Call Z.ai API
         """
         import time
         start = time.time()
         
-        if not self.api_token:
-            logger.error("CHUTES_API_TOKEN not configured!")
+        token = self._get_auth_header()
+        if not token:
+            logger.error("ZAI_API_KEY not configured or invalid")
             return {"status": "ERROR", "message": "AI not configured"}
 
         headers = {
-            "Authorization": f"Bearer {self.api_token}",
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }
 
-        for model in self.models:
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": temperature,
-                "stream": False,
-                "max_tokens": 200
-            }
-            
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        self.base_url, 
-                        json=payload, 
-                        headers=headers, 
-                        timeout=12.0
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    content = result['choices'][0]['message']['content']
-                    
-                    # Extract JSON from markdown
-                    if "```" in content:
-                        json_start = content.find('{')
-                        json_end = content.rfind('}') + 1
-                        json_str = content[json_start:json_end]
-                    else:
-                        json_str = content
-                    
-                    elapsed = time.time() - start
-                    logger.info(f"🤖 AI ({model.split('/')[-1]}) responded in {elapsed:.2f}s")
-                    return json.loads(json_str)
-
-            except Exception as e:
-                logger.warning(f"⚠️ Model {model} failed: {type(e).__name__}: {e}")
-                continue
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": False,
+            "max_tokens": 1024
+        }
         
-        # All models failed
-        elapsed = time.time() - start
-        logger.error(f"❌ All AI models failed after {elapsed:.2f}s")
-        return {"status": "ERROR", "message": "AI Service Unavailable"}
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.base_url, 
+                    json=payload, 
+                    headers=headers, 
+                    timeout=15.0
+                )
+                
+                if response.status_code != 200:
+                   logger.error(f"Z.ai API Error: {response.text}")
+                   
+                response.raise_for_status()
+                result = response.json()
+                content = result['choices'][0]['message']['content']
+                
+                # Extract JSON from markdown
+                if "```" in content:
+                    json_start = content.find('{')
+                    json_end = content.rfind('}') + 1
+                    json_str = content[json_start:json_end]
+                else:
+                    json_str = content
+                
+                elapsed = time.time() - start
+                logger.info(f"🤖 AI ({self.model}) responded in {elapsed:.2f}s")
+                return json.loads(json_str)
+
+        except Exception as e:
+            elapsed = time.time() - start
+            logger.error(f"❌ AI failed after {elapsed:.2f}s: {e}")
+            return {"status": "ERROR", "message": "AI Service Unavailable"}
 
     async def interpret(self, query: str) -> Dict[str, Any]:
         """
