@@ -28,14 +28,6 @@ class AIAlertInterpreter:
         Reference: https://open.bigmodel.cn/dev/api#sdk_python
         """
         try:
-            import time
-            import jwt # PyJWT is already a dependency of smartapi-python -> websocket-client usually or install if missing? 
-                       # Actually, smartapi uses requests. Let's check imports.
-                       # If PyJWT is missing, we can implement simple JWT manually or use pyjwt if available. 
-                       # Given requirements.txt has 'smartapi-python', let's stick to standard lib if possible or check.
-                       # Wait, standard JWT creation is safer with PyJWT. 
-                       # Let's check if we can use standard lib implementation for simple HS256 JWT
-            
             # Implementation using standard library to avoid dependency issues if PyJWT not present
             # But wait, requirement.txt doesn't list pyjwt explicitly. 
             # Let's use the exact method from their docs which often uses PyJWT.
