@@ -67,7 +67,7 @@ Add these variables:
 |----------|-------|-------------|
 | `DATABASE_URL` | (from MySQL service) | From MySQL Variables tab |
 | `REDIS_URL` | `redis://redis:6379/0` | Redis connection (optional if no Redis) |
-| `CHUTES_API_TOKEN` | `your_chutes_api_token` | Chutes AI API key |
+| `ZAI_API_KEY` | `your_zai_api_key` | Z.ai API key for AI features |
 | `ADMIN_IDS` | `your_telegram_id` | Your admin Telegram ID |
 | `TESTER_ACCESS_CODE` | `your_test_code` | Optional tester code |
 | `ALLOWED_ORIGINS` | `*` | CORS origins (for Railway) |

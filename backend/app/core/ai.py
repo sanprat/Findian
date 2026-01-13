@@ -9,8 +9,16 @@ logger = logging.getLogger(__name__)
 class AIAlertInterpreter:
     def __init__(self):
         self.api_key = os.getenv("ZAI_API_KEY")
-        self.base_url = "https://open.bigmodel.cn/api/paas/v4/chat/completions" # Correct Z.ai/BigModel URL
-        self.model = "glm-4-flash" # Fast model
+        self.base_url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        
+        # Models requested by user (Prioritized)
+        self.models = [
+            "GLM-4.5-Flash",    # Fast text model (Best for simple intents)
+            "GLM-4.6V-Flash",   # Multimodal Flash
+            "GLM-4.6V-FlashX"   # extended
+        ]
+        self.model = self.models[0] # Default to first
+        
         self.cache = {} # Simple in-memory cache for token
 
     def _generate_token(self, apikey: str, exp_seconds: int):
@@ -97,46 +105,52 @@ class AIAlertInterpreter:
             "Content-Type": "application/json"
         }
 
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": False,
-            "max_tokens": 1024
-        }
-        
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.base_url, 
-                    json=payload, 
-                    headers=headers, 
-                    timeout=15.0
-                )
-                
-                if response.status_code != 200:
-                   logger.error(f"Z.ai API Error: {response.text}")
-                   
-                response.raise_for_status()
-                result = response.json()
-                content = result['choices'][0]['message']['content']
-                
-                # Extract JSON from markdown
-                if "```" in content:
-                    json_start = content.find('{')
-                    json_end = content.rfind('}') + 1
-                    json_str = content[json_start:json_end]
-                else:
-                    json_str = content
-                
-                elapsed = time.time() - start
-                logger.info(f"🤖 AI ({self.model}) responded in {elapsed:.2f}s")
-                return json.loads(json_str)
+        for model in self.models:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "stream": False,
+                "max_tokens": 1024
+            }
+            
+            try:
+                # logger.info(f"🤖 Attempting AI call with model: {model}")
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        self.base_url, 
+                        json=payload, 
+                        headers=headers, 
+                        timeout=15.0
+                    )
+                    
+                    if response.status_code != 200:
+                         logger.warning(f"⚠️ Model {model} error {response.status_code}: {response.text}")
+                         continue # Try next model
+                         
+                    result = response.json()
+                    content = result['choices'][0]['message']['content']
+                    
+                    # Extract JSON from markdown
+                    if "```" in content:
+                        json_start = content.find('{')
+                        json_end = content.rfind('}') + 1
+                        json_str = content[json_start:json_end]
+                    else:
+                        json_str = content
+                    
+                    elapsed = time.time() - start
+                    logger.info(f"🤖 AI ({model}) responded in {elapsed:.2f}s")
+                    return json.loads(json_str)
 
-        except Exception as e:
-            elapsed = time.time() - start
-            logger.error(f"❌ AI failed after {elapsed:.2f}s: {e}")
-            return {"status": "ERROR", "message": "AI Service Unavailable"}
+            except Exception as e:
+                logger.warning(f"⚠️ Model {model} failed: {type(e).__name__}: {e}")
+                continue
+        
+        # All models failed
+        elapsed = time.time() - start
+        logger.error(f"❌ All AI models failed after {elapsed:.2f}s")
+        return {"status": "ERROR", "message": "AI Service Unavailable"}
 
     async def interpret(self, query: str) -> Dict[str, Any]:
         """
