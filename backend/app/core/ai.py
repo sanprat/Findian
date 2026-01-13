@@ -43,6 +43,11 @@ class AIAlertInterpreter:
             # Actually, most robust way is to use the SDK if user allows, but user wants code update immediately.
             # I will use a pure python JWT generation function to be safe.
             
+            # Check if key is valid
+            if not apikey or "." not in apikey:
+                logger.error(f"Invalid ZAI_API_KEY format. Expected 'id.secret', got: {apikey[:5]}...")
+                return None
+
             id, secret = apikey.split(".")
             payload = {
                 "api_key": id,
@@ -70,7 +75,9 @@ class AIAlertInterpreter:
             return (header + b"." + payload_enc + b"." + signature).decode('utf-8')
             
         except Exception as e:
-            logger.error(f"Token generation failed: {e}")
+            logger.error(f"Token generation failed: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
 
     def _get_auth_header(self):
