@@ -582,6 +582,15 @@ async def startup_event():
     
     logger.info("🚀 Starting backend services...")
 
+    # Check AI Key
+    import os
+    zai_key = os.getenv("ZAI_API_KEY")
+    if zai_key:
+        masked = f"{zai_key[:5]}...{zai_key[-5:]}" if len(zai_key) > 10 else "Invalid"
+        logger.info(f"✅ ZAI_API_KEY found: {masked}")
+    else:
+        logger.error("❌ ZAI_API_KEY NOT FOUND in environment variables!")
+
     # Check if market is open (9:15 AM - 3:30 PM IST, weekdays)
     from datetime import datetime
     import pytz

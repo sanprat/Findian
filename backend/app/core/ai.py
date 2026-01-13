@@ -84,6 +84,7 @@ class AIAlertInterpreter:
     def _get_auth_header(self):
         """Get Authorization header with cached JWT"""
         if not self.api_key:
+            logger.error("❌ ZAI_API_KEY is missing in AIAlertInterpreter")
             return None
             
         # Check cache
@@ -92,8 +93,12 @@ class AIAlertInterpreter:
             
         # Generate new
         token = self._generate_token(self.api_key, 3600)
-        self.cache['token'] = token
-        self.cache['exp'] = time.time() + 3500 # 5 min buffer
+        if not token:
+             logger.error("❌ Failed to generate Z.ai token")
+        else:
+             self.cache['token'] = token
+             self.cache['exp'] = time.time() + 3500 # 5 min buffer
+        
         return token
 
     async def _call_with_fallback(self, messages: list, temperature: float = 0.1) -> Dict[str, Any]:
