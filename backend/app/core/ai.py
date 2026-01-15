@@ -176,7 +176,7 @@ MARKET_INFO: {"intent":"MARKET_INFO","status":"MARKET_INFO","data":{"answer":"Co
 NEEDS_CLARIFICATION: {"status":"NEEDS_CLARIFICATION","question":"Which stock?"}
 REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 
-Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN). 
+Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN, UBI=UNIONBANK). 
 Reject specific buy/sell recommendations.
 ALLOW general market questions, definitions, concepts, and market sentiment queries.
 """

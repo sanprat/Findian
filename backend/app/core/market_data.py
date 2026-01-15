@@ -27,11 +27,14 @@ class MarketDataService:
         Fetch live quote (LTP) for a symbol using SmartAPI.
         Falls back to yfinance if SmartAPI not available.
         """
+        from app.core.symbol_tokens import get_token, resolve_alias
+        
+        # Resolve Alias (e.g., UBI -> UNIONBANK)
+        symbol = resolve_alias(symbol)
+
         # Try SmartAPI first
         if self.smart_api:
             try:
-                from app.core.symbol_tokens import get_token
-                
                 token = get_token(symbol)
                 if not token:
                     logger.warning(f"⚠️ Token not found for {symbol}, falling back to yfinance")
@@ -69,6 +72,10 @@ class MarketDataService:
         """Fallback: Fetch quote using yfinance (for unsupported symbols)"""
         try:
             import yfinance as yf
+            
+            # Resolve Alias again if called directly (redundant but safe)
+            from app.core.symbol_tokens import resolve_alias
+            symbol = resolve_alias(symbol)
 
             yf_symbol = f"{symbol}.NS"
             ticker = yf.Ticker(yf_symbol)

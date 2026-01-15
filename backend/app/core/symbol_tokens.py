@@ -89,6 +89,19 @@ SYMBOL_TO_TOKEN = {
 # Reverse mapping for quick lookups
 TOKEN_TO_SYMBOL = {v: k for k, v in SYMBOL_TO_TOKEN.items()}
 
+# Common Aliases
+SYMBOL_ALIASES = {
+    "UBI": "UNIONBANK",
+    "RIL": "RELIANCE",
+    "SBI": "SBIN",
+    "M&M": "M&M", # Handle special char variants if needed
+}
+
+def resolve_alias(symbol: str) -> str:
+    """Resolve common aliases to official NSE symbol"""
+    return SYMBOL_ALIASES.get(symbol.upper(), symbol.upper())
+
+
 
 def get_token(symbol: str) -> str:
     """Get SmartAPI token for a symbol"""
