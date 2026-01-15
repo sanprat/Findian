@@ -1064,13 +1064,14 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 "data": result.get("data")
             }
 
-        # --- HANDLE MARKET INFO ---
-        elif intent == "MARKET_INFO":
-            return {
-                "success": True,
-                "status": "MARKET_INFO",
-                "message": result.get("data", {}).get("answer", "No info found.")
-            }
+
+
+    if result.get("status") == "MARKET_INFO":
+        return {
+            "success": True,
+            "status": "MARKET_INFO",
+            "message": result.get("data", {}).get("answer", "No info found.")
+        }
 
     if result.get("status") == "REJECTED":
         return {
