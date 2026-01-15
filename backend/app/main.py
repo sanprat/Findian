@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 # Core Modules
 from app.core.ai import AIAlertInterpreter 
-from app.db.base import Base, engine, get_db
+from app.db.base import Base, engine, get_db, verify_db_connection
 from app.db.models import Alert, TradeHistory
+
 from app.core.market_data import MarketDataService
 from app.core.scanner import MarketScannerService
 from app.core.scheduler import AlertMonitor
@@ -19,7 +20,8 @@ from app.core.alert_dispatcher import AlertDispatcher
 from app.core.scanner_engine import ScannerEngine
 
 # Initialize Database Tables
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine) <- MOVED TO STARTUP EVENT
+
 
 app = FastAPI(title="AI Intelligent Alert System")
 # Last rebuild: 2026-01-11 09:28 IST
@@ -704,8 +706,20 @@ async def startup_event():
 
     # Run Schema Migration Check (fast)
     try:
-        from app.db.migration import check_and_fix_schema
-        check_and_fix_schema()
+        # Verify DB Connection first (Non-blocking retry)
+        logger.info("🔌 Verifying Database Connection...")
+        if verify_db_connection(engine):
+             logger.info("✅ Database Connection Verified")
+             
+             # Create Tables
+             logger.info("🛠️ initializing Database Tables...")
+             Base.metadata.create_all(bind=engine)
+             logger.info("✅ Database Tables Verified/Created")
+     
+             from app.db.migration import check_and_fix_schema
+             check_and_fix_schema()
+        else:
+             logger.error("❌ Database Connection Failed after retries") 
     except Exception as e:
         logger.error(f"Migration Failed: {e}")
 

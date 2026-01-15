@@ -71,70 +71,35 @@ if DATABASE_URL.startswith("mysql://"):
     DATABASE_URL = DATABASE_URL.replace("mysql://", "mysql+pymysql://")
 
 
-def get_engine(url, retries=10, delay=5):
-    """Retrieve database engine with retry logic."""
-    last_error = None
 
+def get_engine(url, connect_args=None):
+    """Retrieve database engine (Lazy)."""
+    if connect_args is None:
+        connect_args = {}
+        
+    # Railway MySQL Check
+    if url.startswith("mysql"):
+         if ".railway.internal" not in url:
+             connect_args = {"ssl": {"ssl_mode": "REQUIRED"}}
+    
+    return create_engine(url, connect_args=connect_args, pool_pre_ping=True)
+
+def verify_db_connection(engine, retries=5, delay=3):
+    """Check DB connection (Blocking). Call at startup."""
     for i in range(retries):
         try:
-            connect_args = {}
-
-            # Railway MySQL: SSL only needed for external connections
-            # Internal connections (mysql.railway.internal) don't need SSL
-            if url.startswith("mysql"):
-                if ".railway.internal" not in url:
-                    # External connection - require SSL
-                    connect_args = {"ssl": {"ssl_mode": "REQUIRED"}}
-                    print("🔒 Using SSL for external MySQL connection")
-                else:
-                    # Internal Railway connection - no SSL needed
-                    print("🔗 Using internal Railway connection (no SSL)")
-
-                # Pre-check TCP connectivity (only on first attempt)
-                if i == 0:
-                    try:
-                        host_part = url.split("@")[1].split("/")[0]
-                        if ":" in host_part:
-                            host = host_part.split(":")[0]
-                            port = int(host_part.split(":")[1])
-                        else:
-                            host = host_part
-                            port = 3306
-
-                        print(f"🔍 Checking database connectivity to {host}:{port}...")
-                        wait_for_db(host, port, timeout=30)
-                    except Exception as parse_error:
-                        print(f"⚠️ TCP pre-check failed: {parse_error}")
-                        # Continue anyway - let SQLAlchemy try
-
-            engine = create_engine(url, connect_args=connect_args, pool_pre_ping=True)
-
-            # Try to connect
             with engine.connect() as conn:
-                print(f"✅ Database connected successfully (attempt {i + 1})")
-                return engine
-
-        except OperationalError as e:
-            last_error = e
-            print(f"⚠️ Database not ready (Attempt {i + 1}/{retries})")
-            print(f"   Error: {str(e)[:100]}...")
-            if i < retries - 1:  # Don't sleep on last attempt
-                print(f"   Retrying in {delay}s...")
-                time.sleep(delay)
-
+                print(f"✅ Database connected successfully.")
+                return True
         except Exception as e:
-            last_error = e
-            print(f"❌ Unexpected DB Error (Attempt {i + 1}/{retries}): {e}")
+            print(f"⚠️ Database not ready (Attempt {i+1}/{retries}): {e}")
             if i < retries - 1:
                 time.sleep(delay)
+    return False
 
-    raise Exception(
-        f"Could not connect to database after {retries} retries. Last error: {last_error}"
-    )
-
-
-# Use the retry logic
+# Lazy creation (Fast)
 engine = get_engine(DATABASE_URL)
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
