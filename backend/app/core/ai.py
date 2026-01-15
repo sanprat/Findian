@@ -163,7 +163,7 @@ class AIAlertInterpreter:
         """
         system_prompt = """Stock assistant. Return JSON only.
 
-INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO, VIEW_PORTFOLIO, DELETE_PORTFOLIO, MARKET_INFO
+INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO, VIEW_PORTFOLIO, DELETE_PORTFOLIO, MARKET_INFO, CHECK_FUNDAMENTALS
 
 JSON:
 CHECK_PRICE: {"intent":"CHECK_PRICE","status":"CONFIRMED","data":{"symbol":"TICKER"}}
@@ -173,6 +173,7 @@ SELL_PORTFOLIO: {"intent":"SELL_PORTFOLIO","status":"CONFIRMED","data":{"symbol"
 VIEW_PORTFOLIO: {"intent":"VIEW_PORTFOLIO","status":"CONFIRMED"}
 DELETE_PORTFOLIO: {"intent":"DELETE_PORTFOLIO","status":"CONFIRMED","data":{"symbol":"TICKER"}}
 MARKET_INFO: {"intent":"MARKET_INFO","status":"MARKET_INFO","data":{"answer":"Concise answer string here."}}
+CHECK_FUNDAMENTALS: {"intent":"CHECK_FUNDAMENTALS","status":"CONFIRMED","data":{"symbol":"TICKER"}}
 NEEDS_CLARIFICATION: {"status":"NEEDS_CLARIFICATION","question":"Which stock?"}
 REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 

@@ -1066,6 +1066,25 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 "data": result.get("data")
             }
 
+        # --- HANDLE CHECK FUNDAMENTALS ---
+        elif intent == "CHECK_FUNDAMENTALS":
+             symbol = result.get("data", {}).get("symbol")
+             if symbol:
+                 fundamentals = market_data.get_fundamentals(symbol)
+                 if fundamentals:
+                     return {
+                         "success": True, 
+                         "status": "FUNDAMENTALS",
+                         "data": fundamentals
+                     }
+             
+             return {
+                 "success": False,
+                 "status": "ERROR", 
+                 "message": f"Could not fetch fundamentals for {symbol}"
+             }
+
+
 
 
     if result.get("status") == "MARKET_INFO":

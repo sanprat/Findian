@@ -141,3 +141,36 @@ class MarketDataService:
         except Exception as e:
             logger.error(f"Historical Data Fetch Error for {symbol}: {e}")
             return []
+
+    def get_fundamentals(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch fundamental data (P/E, ROE, etc.) using yfinance.
+        """
+        try:
+            import yfinance as yf
+            from app.core.symbol_tokens import resolve_alias
+            
+            symbol = resolve_alias(symbol)
+            yf_symbol = f"{symbol}.NS"
+            
+            ticker = yf.Ticker(yf_symbol)
+            info = ticker.info
+            
+            # Extract key metrics
+            data = {
+                "symbol": symbol,
+                "market_cap": info.get("marketCap"),
+                "pe_ratio": info.get("trailingPE"),
+                "pb_ratio": info.get("priceToBook"),
+                "roe": info.get("returnOnEquity"), # decimal (0.15 = 15%)
+                "book_value": info.get("bookValue"),
+                "dividend_yield": info.get("dividendYield"),
+                "sector": info.get("sector"),
+                "industry": info.get("industry")
+            }
+            
+            return data
+            
+        except Exception as e:
+            logger.error(f"Fundamentals Fetch Error for {symbol}: {e}")
+            return None

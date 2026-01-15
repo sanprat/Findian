@@ -599,6 +599,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                          await status_msg.edit_text("❌ Failed to fetch portfolio.")
 
+        elif status == "FUNDAMENTALS":
+            d = result.get("data", {})
+            symbol = d.get("symbol", "Stock")
+            
+            # Format numbers
+            pe = d.get("pe_ratio")
+            pe_str = f"{pe:.2f}" if pe else "N/A"
+            
+            roe = d.get("roe")
+            roe_str = f"{roe*100:.2f}%" if roe else "N/A"
+            
+            mc = d.get("market_cap")
+            def fmt_mc(n):
+                if not n: return "N/A"
+                if n >= 1e11: return f"₹{n/1e7:,.0f} Cr" # > 1B
+                if n >= 1e7: return f"₹{n/1e7:,.0f} Cr"
+                return f"₹{n:,.0f}"
+            
+            mc_str = fmt_mc(mc)
+            pb = d.get("pb_ratio")
+            pb_str = f"{pb:.2f}" if pb else "N/A"
+            div = d.get("dividend_yield")
+            div_str = f"{div*100:.2f}%" if div else "N/A"
+            
+            msg = (
+                f"📊 <b>{symbol} Fundamentals</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"P/E Ratio: <b>{pe_str}</b>\n"
+                f"ROE: <b>{roe_str}</b>\n"
+                f"P/B Ratio: {pb_str}\n"
+                f"Div Yield: {div_str}\n"
+                f"Market Cap: {mc_str}\n"
+                f"Sector: {d.get('sector', 'N/A')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"<i>Data provided by Yahoo Finance</i>"
+            )
+            await status_msg.edit_text(msg, parse_mode='HTML')
+
         elif intent == "CHECK_PRICE":
             symbol = result.get("data", {}).get("symbol")
             if not symbol:
