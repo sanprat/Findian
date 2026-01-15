@@ -587,187 +587,28 @@ class AlertResponse(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    """Complete startup sequence for all services."""
-    import time
-    start_time = time.time()
+    """MINIMAL startup - isolate crash source"""
     logger = logging.getLogger("uvicorn")
+    logger.info("🚀 MINIMAL STARTUP - Starting...")
     
-    logger.info("🚀 Starting backend services...")
-
-    # Check AI Key
-    import os
-    zai_key = os.getenv("ZAI_API_KEY")
-    if zai_key:
-        masked = f"{zai_key[:5]}...{zai_key[-5:]}" if len(zai_key) > 10 else "Invalid"
-        logger.info(f"✅ ZAI_API_KEY found: {masked}")
-    else:
-        logger.error("❌ ZAI_API_KEY NOT FOUND in environment variables!")
-
-    # Check if market is open (9:15 AM - 3:30 PM IST, weekdays)
-    # Check if market is open (9:15 AM - 3:30 PM IST, weekdays)
-    from datetime import datetime
-    is_market_hours = False
-
     try:
-        import pytz
-        ist = pytz.timezone('Asia/Kolkata')
-        now = datetime.now(ist)
-        is_weekday = now.weekday() < 5  # Mon-Fri
-        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-        is_market_hours = is_weekday and market_open <= now <= market_close
-    except Exception as e:
-        logger.error(f"⚠️ Timezone init failed: {e}. Defaulting to Market CLOSED.")
-        is_market_hours = False
-
-    
-    if is_market_hours:
-        logger.info("📈 Market OPEN - Using SmartAPI for real-time data")
-    else:
-        logger.info("🌙 Market CLOSED - Using yfinance (faster startup)")
-    
-    # Initialize SmartAPI only during market hours
-    import threading
-    
-    def init_smartapi_background():
-        try:
-            import os
-            from app.core.smart_auth import SmartApiAuth
-            from app.core.websocket_manager import WebSocketManager
-            
-            logger.info("🔐 Initializing SmartAPI Authentication...")
-            
-            # Read credentials from environment
-            api_key_1 = os.getenv("ANGEL_API_KEY_1")
-            client_code_1 = os.getenv("ANGEL_CLIENT_CODE_1")
-            pin_1 = os.getenv("ANGEL_PIN_1")
-            totp_secret_1 = os.getenv("ANGEL_TOTP_SECRET_1")
-            
-            if not all([api_key_1, client_code_1, pin_1, totp_secret_1]):
-                logger.warning("⚠️ SmartAPI credentials not configured, skipping")
-                return
-            
-            # Initialize Auth for Account 1
-            auth_1 = SmartApiAuth(api_key_1, client_code_1, pin_1, totp_secret_1)
-            
-            if auth_1.login():
-                logger.info("✅ SmartAPI Account 1 authenticated")
-                tokens_1 = auth_1.get_tokens()
-                
-                ws_credentials = [{
-                    'auth_token': tokens_1['jwt_token'],
-                    'api_key': tokens_1['api_key'],
-                    'client_code': tokens_1['client_code'],
-                    'feed_token': tokens_1['feed_token']
-                }]
-                
-                # Initialize WebSocket Manager
-                ws_manager = WebSocketManager(ws_credentials)
-                app.state.ws_manager = ws_manager # Expose for Main Loop Consumer
-                ws_manager.start()
-                
-                # Subscribe to top stocks
-                from app.core.symbol_tokens import get_all_tokens
-                all_tokens = get_all_tokens()
-                logger.info(f"📊 Subscribing to {len(all_tokens)} stocks...")
-                ws_manager.subscribe(all_tokens, mode=2)
-                
-                # Inject SmartAPI into MarketDataService
-                if hasattr(auth_1, 'smart_api') and auth_1.smart_api:
-                    market_data.set_smart_api(auth_1.smart_api)
-                
-                logger.info("✅ SmartAPI WebSocket ready")
-            else:
-                logger.warning("⚠️ SmartAPI auth failed, using fallback")
-        except Exception as e:
-            logger.error(f"SmartAPI init error: {e}")
-    
-    # Start SmartAPI only during market hours (skip on weekends/nights)
-    if is_market_hours:
-        threading.Thread(target=init_smartapi_background, daemon=True).start()
+        logger.info("✅ Step 1: Startup event entered")
         
-        # Start Async Tick Consumer
-        async def consume_ticks():
-            logger.info("⏳ Waiting for WebSocket Manager...")
-            # Wait for ws_manager to be initialized
-            while not hasattr(app.state, 'ws_manager'):
-                await asyncio.sleep(1)
-            
-            logger.info("⚡ Tick Consumer Loop Started")
-            ws_manager = app.state.ws_manager
-            loop = asyncio.get_event_loop()
-            
-            while True:
-                try:
-                    # Blocking wait for next tick in thread executor
-                    tick = await loop.run_in_executor(None, ws_manager.tick_queue.get)
-                    await breakout_engine.process_tick(tick)
-                except Exception as e:
-                    logger.error(f"Tick Consumer Error: {e}")
-                    await asyncio.sleep(1)
+        # ONLY log, don't initialize anything
+        import os
+        logger.info(f"✅ Step 2: Environment check - API_SECRET_KEY present: {bool(os.getenv('API_SECRET_KEY'))}")
+        logger.info(f"✅ Step 3: Environment check - DATABASE_URL present: {bool(os.getenv('DATABASE_URL'))}")
+        
+        logger.info("✅ Step 4: Skipping ALL initializations (DB, Scanner, Monitor, etc.)")
+        logger.info("⚠️ WARNING: Running in MINIMAL MODE - most features DISABLED")
+        
+        logger.info("🚀 MINIMAL STARTUP COMPLETED SUCCESSFULLY")
+        
+    except Exception as e:
+        logger.error(f"❌ MINIMAL STARTUP FAILED: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
-        asyncio.create_task(consume_ticks())
-
-    else:
-        logger.info("⏭️ Skipping SmartAPI initialization (market closed)")
-
-    # Run Schema Migration Check (DEFER TO BACKGROUND - don't block startup)
-    def init_database_background():
-        """Initialize DB in background thread - don't block app startup"""
-        try:
-            logger.info("🔌 Verifying Database Connection...")
-            if verify_db_connection(engine):
-                 logger.info("✅ Database Connection Verified")
-                 
-                 # Create Tables
-                 logger.info("🛠️ Initializing Database Tables...")
-                 Base.metadata.create_all(bind=engine)
-                 logger.info("✅ Database Tables Verified/Created")
-         
-                 from app.db.migration import check_and_fix_schema
-                 check_and_fix_schema()
-            else:
-                 logger.error("❌ Database Connection Failed after retries - API will have limited functionality") 
-        except Exception as e:
-            logger.error(f"❌ Database Init Failed: {e}")
-    
-    # Start DB init in background (don't wait for it)
-    threading.Thread(target=init_database_background, daemon=True).start()
-
-
-    # Initialize market data service
-    logger.info("Initializing Market Data service...")
-    if market_data.login():
-        logger.info("✅ Market Data Service Ready")
-    else:
-        logger.warning("⚠️ Market Data Service failed, using yfinance fallback")
-
-    # Start Scanner Loop (runs in daemon thread)
-    scanner_service.start()
-    
-    # Start Fundamentals Service (delayed 30s, daemon thread)
-    from app.core.fundamentals import FundamentalsService
-    fundamentals_service = FundamentalsService(scanner_service.symbols)
-    fundamentals_service.start()
-    app.state.fundamentals_service = fundamentals_service
-
-    # Start Alert Monitor
-    await monitor_service.start()
-    
-    # Log startup time
-    elapsed = time.time() - start_time
-    logger.info(f"🚀 Backend started in {elapsed:.2f}s")
-
-    # Start Railway Keepalive (prevents service sleep - critical for low latency)
-    import asyncio
-    import httpx
-    
-    async def keepalive_ping():
-        """Ping /health every 4 minutes to prevent Railway sleep"""
-        while True:
-            try:
-                await asyncio.sleep(240)  # 4 minutes
-                async with httpx.AsyncClient() as client:
                     await client.get("http://localhost:8000/health", timeout=5)
                 logger.debug("🏓 Keepalive ping sent")
             except Exception as e:
