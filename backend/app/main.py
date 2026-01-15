@@ -604,15 +604,22 @@ async def startup_event():
         logger.error("❌ ZAI_API_KEY NOT FOUND in environment variables!")
 
     # Check if market is open (9:15 AM - 3:30 PM IST, weekdays)
+    # Check if market is open (9:15 AM - 3:30 PM IST, weekdays)
     from datetime import datetime
-    import pytz
-    
-    ist = pytz.timezone('Asia/Kolkata')
-    now = datetime.now(ist)
-    is_weekday = now.weekday() < 5  # Mon-Fri
-    market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    is_market_hours = is_weekday and market_open <= now <= market_close
+    is_market_hours = False
+
+    try:
+        import pytz
+        ist = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(ist)
+        is_weekday = now.weekday() < 5  # Mon-Fri
+        market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
+        market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+        is_market_hours = is_weekday and market_open <= now <= market_close
+    except Exception as e:
+        logger.error(f"⚠️ Timezone init failed: {e}. Defaulting to Market CLOSED.")
+        is_market_hours = False
+
     
     if is_market_hours:
         logger.info("📈 Market OPEN - Using SmartAPI for real-time data")
