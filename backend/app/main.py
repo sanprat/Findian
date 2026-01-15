@@ -711,24 +711,29 @@ async def startup_event():
     else:
         logger.info("⏭️ Skipping SmartAPI initialization (market closed)")
 
-    # Run Schema Migration Check (fast)
-    try:
-        # Verify DB Connection first (Non-blocking retry)
-        logger.info("🔌 Verifying Database Connection...")
-        if verify_db_connection(engine):
-             logger.info("✅ Database Connection Verified")
-             
-             # Create Tables
-             logger.info("🛠️ initializing Database Tables...")
-             Base.metadata.create_all(bind=engine)
-             logger.info("✅ Database Tables Verified/Created")
-     
-             from app.db.migration import check_and_fix_schema
-             check_and_fix_schema()
-        else:
-             logger.error("❌ Database Connection Failed after retries") 
-    except Exception as e:
-        logger.error(f"Migration Failed: {e}")
+    # Run Schema Migration Check (DEFER TO BACKGROUND - don't block startup)
+    def init_database_background():
+        """Initialize DB in background thread - don't block app startup"""
+        try:
+            logger.info("🔌 Verifying Database Connection...")
+            if verify_db_connection(engine):
+                 logger.info("✅ Database Connection Verified")
+                 
+                 # Create Tables
+                 logger.info("🛠️ Initializing Database Tables...")
+                 Base.metadata.create_all(bind=engine)
+                 logger.info("✅ Database Tables Verified/Created")
+         
+                 from app.db.migration import check_and_fix_schema
+                 check_and_fix_schema()
+            else:
+                 logger.error("❌ Database Connection Failed after retries - API will have limited functionality") 
+        except Exception as e:
+            logger.error(f"❌ Database Init Failed: {e}")
+    
+    # Start DB init in background (don't wait for it)
+    threading.Thread(target=init_database_background, daemon=True).start()
+
 
     # Initialize market data service
     logger.info("Initializing Market Data service...")
