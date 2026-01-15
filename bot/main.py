@@ -7,6 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 
 # ...
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
+from handlers import scan_command, alert_command, analyze_command
 
 # Configure logging
 logging.basicConfig(
@@ -506,6 +507,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         elif status == "REJECTED":
             await status_msg.edit_text(f"🛑 {result.get('message')}")
+
+        elif status == "MARKET_INFO":
+            await status_msg.edit_text(f"💡 {result.get('message')}")
 
         elif status == "CREATED":
             await status_msg.edit_text(result.get("message"))
@@ -1093,7 +1097,17 @@ def main():
         application.add_handler(CommandHandler("portfolio", cmd_port_alias))
         print("[DEBUG] Registered /portfolio handler -> show_portfolio_menu")
         application.add_handler(CommandHandler("help", cmd_help_alias))
+        
+        # New Handlers
+        application.add_handler(CommandHandler("scan", scan_command))
+        application.add_handler(CommandHandler("alert", alert_command))
+        application.add_handler(CommandHandler("analyze", analyze_command))
         print("[DEBUG] Registered /help handler")
+        
+        # New Handlers
+        application.add_handler(CommandHandler("scan", scan_command))
+        application.add_handler(CommandHandler("alert", alert_command))
+        application.add_handler(CommandHandler("analyze", analyze_command))
         
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(CallbackQueryHandler(button_handler))
@@ -1115,6 +1129,11 @@ def main():
         application.add_handler(CommandHandler("screener", cmd_screen_alias))
         application.add_handler(CommandHandler("portfolio", cmd_port_alias))
         application.add_handler(CommandHandler("help", cmd_help_alias))
+        
+        # New Handlers
+        application.add_handler(CommandHandler("scan", scan_command))
+        application.add_handler(CommandHandler("alert", alert_command))
+        application.add_handler(CommandHandler("analyze", analyze_command))
 
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
         application.add_handler(CallbackQueryHandler(button_handler))

@@ -7,6 +7,8 @@ from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 from app.core.binary_parser import BinaryParser
 from app.core.cache import cache
 
+import queue
+
 logger = logging.getLogger(__name__)
 
 class WebSocketManager:
@@ -22,6 +24,7 @@ class WebSocketManager:
         self.subscription_map: List[Set[str]] = [] # Maps connection index to set of tokens
         self.is_running = False
         self._ws_instances = []  # Store instances for subscription
+        self.tick_queue = queue.Queue() # Thread-safe queue for ticks
 
     def _on_data(self, wsapp, message):
         """Callback for incoming WebSocket data"""
@@ -41,6 +44,7 @@ class WebSocketManager:
                     if symbol:
                         # Store in Redis
                         try:
+                            # 1. Update Redis Cache (Hot storage)
                             cache.hset(f"stock:{symbol}", mapping={
                                 "ltp": str(ltp),
                                 "volume": str(volume),
@@ -48,8 +52,18 @@ class WebSocketManager:
                                 "token": str(token)
                             })
                             logger.debug(f"📊 {symbol}: ₹{ltp}")
+                            
+                            # 2. Push to Queue for Engines (Breakout, etc.)
+                            self.tick_queue.put({
+                                "token": token,
+                                "symbol": symbol,
+                                "ltp": ltp,
+                                "volume": volume,
+                                "timestamp": message.get('exchange_timestamp', 'now')
+                            })
+                            
                         except Exception as redis_err:
-                            logger.error(f"Redis storage failed for {symbol}: {redis_err}")
+                            logger.error(f"Tick processing failed for {symbol}: {redis_err}")
                     
         except Exception as e:
             logger.error(f"Error processing WS data: {e}")

@@ -163,7 +163,7 @@ class AIAlertInterpreter:
         """
         system_prompt = """Stock assistant. Return JSON only.
 
-INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO, VIEW_PORTFOLIO, DELETE_PORTFOLIO
+INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO, VIEW_PORTFOLIO, DELETE_PORTFOLIO, MARKET_INFO
 
 JSON:
 CHECK_PRICE: {"intent":"CHECK_PRICE","status":"CONFIRMED","data":{"symbol":"TICKER"}}
@@ -172,10 +172,13 @@ ADD_PORTFOLIO: {"intent":"ADD_PORTFOLIO","status":"CONFIRMED","data":{"items":[{
 SELL_PORTFOLIO: {"intent":"SELL_PORTFOLIO","status":"CONFIRMED","data":{"symbol":"TICKER","quantity":10,"price":3500}}
 VIEW_PORTFOLIO: {"intent":"VIEW_PORTFOLIO","status":"CONFIRMED"}
 DELETE_PORTFOLIO: {"intent":"DELETE_PORTFOLIO","status":"CONFIRMED","data":{"symbol":"TICKER"}}
+MARKET_INFO: {"intent":"MARKET_INFO","status":"MARKET_INFO","data":{"answer":"Concise answer string here."}}
 NEEDS_CLARIFICATION: {"status":"NEEDS_CLARIFICATION","question":"Which stock?"}
 REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 
-Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN). Reject advice requests.
+Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN). 
+Reject specific buy/sell recommendations.
+ALLOW general market questions, definitions, concepts, and market sentiment queries.
 """
         messages = [
             {"role": "system", "content": system_prompt},

@@ -14,6 +14,9 @@ from app.core.scanner import MarketScannerService
 from app.core.scheduler import AlertMonitor
 from app.core.rate_limiter import custom_limiter
 from app.core.subscription import get_user_tier
+from app.core.breakout_engine import BreakoutEngine
+from app.core.alert_dispatcher import AlertDispatcher
+from app.core.scanner_engine import ScannerEngine
 
 # Initialize Database Tables
 Base.metadata.create_all(bind=engine)
@@ -134,6 +137,12 @@ app.add_middleware(
 market_data = MarketDataService()
 scanner_service = MarketScannerService(market_data)
 monitor_service = AlertMonitor()
+
+# Initialize Engines
+alert_dispatcher = AlertDispatcher()
+breakout_engine = BreakoutEngine(dispatcher=alert_dispatcher)
+# scanner_engine = ScannerEngine(db) # Needs DB session, will init in dependency or startup
+
 
 # Startup event is defined later after all route definitions (line ~338)
 
@@ -644,6 +653,7 @@ async def startup_event():
                 
                 # Initialize WebSocket Manager
                 ws_manager = WebSocketManager(ws_credentials)
+                app.state.ws_manager = ws_manager # Expose for Main Loop Consumer
                 ws_manager.start()
                 
                 # Subscribe to top stocks
@@ -665,6 +675,29 @@ async def startup_event():
     # Start SmartAPI only during market hours (skip on weekends/nights)
     if is_market_hours:
         threading.Thread(target=init_smartapi_background, daemon=True).start()
+        
+        # Start Async Tick Consumer
+        async def consume_ticks():
+            logger.info("⏳ Waiting for WebSocket Manager...")
+            # Wait for ws_manager to be initialized
+            while not hasattr(app.state, 'ws_manager'):
+                await asyncio.sleep(1)
+            
+            logger.info("⚡ Tick Consumer Loop Started")
+            ws_manager = app.state.ws_manager
+            loop = asyncio.get_event_loop()
+            
+            while True:
+                try:
+                    # Blocking wait for next tick in thread executor
+                    tick = await loop.run_in_executor(None, ws_manager.tick_queue.get)
+                    await breakout_engine.process_tick(tick)
+                except Exception as e:
+                    logger.error(f"Tick Consumer Error: {e}")
+                    await asyncio.sleep(1)
+
+        asyncio.create_task(consume_ticks())
+
     else:
         logger.info("⏭️ Skipping SmartAPI initialization (market closed)")
 
@@ -1029,6 +1062,14 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 "status": "CONFIRMED",
                 "intent": "CHECK_PRICE",
                 "data": result.get("data")
+            }
+
+        # --- HANDLE MARKET INFO ---
+        elif intent == "MARKET_INFO":
+            return {
+                "success": True,
+                "status": "MARKET_INFO",
+                "message": result.get("data", {}).get("answer", "No info found.")
             }
 
     if result.get("status") == "REJECTED":
