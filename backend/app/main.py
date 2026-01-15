@@ -226,6 +226,7 @@ def register_user(payload: UserRegisterRequest, db: Session = Depends(get_db)):
 class AlertQuery(BaseModel):
     user_id: str
     query: str
+    context: Optional[Dict[str, Any]] = None
 
 @app.post("/api/screener/custom")
 async def custom_screen(query_payload: AlertQuery, db: Session = Depends(get_db)): # Re-using AlertQuery {user_id, query}
@@ -794,7 +795,8 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
     # Instantiate the Chutes AI interpreter
     ai = AIAlertInterpreter()
     
-    result = await ai.interpret(query.query)
+    # Pass context if available
+    result = await ai.interpret(query.query, context=query.context)
 
     # Map the AI result to our response model
     if result.get("status") == "ERROR":

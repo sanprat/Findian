@@ -157,7 +157,7 @@ class AIAlertInterpreter:
         logger.error(f"❌ All AI models failed after {elapsed:.2f}s")
         return {"status": "ERROR", "message": "AI Service Unavailable"}
 
-    async def interpret(self, query: str) -> Dict[str, Any]:
+    async def interpret(self, query: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Interprets the user query using Chutes AI (with Fallback).
         """
@@ -179,10 +179,16 @@ REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN, UBI=UNIONBANK). 
 Reject specific buy/sell recommendations.
 ALLOW general market questions, definitions, concepts, and market sentiment queries.
+IMPORTANT: If asked "Why did [stock] move?" or "Reason for change", DO NOT invent news. Explain that you don't have live news feed, but list general reasons for such moves (earnings, sector trends, etc.).
 """
+        user_content = query
+        if context and context.get("last_symbol"):
+             user_content = f"Context: User previously looked at {context['last_symbol']}.\nQuery: {query}"
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": query}
+            {"role": "user", "content": user_content}
+
         ]
         
         return await self._call_with_fallback(messages)

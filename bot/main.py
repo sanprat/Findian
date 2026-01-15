@@ -483,11 +483,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- AI PROCESSING ---
     status_msg = await update.message.reply_text("🤔 Analysing...")
     
+    # Retrieve Context (last symbol)
+    user_context_data = USER_CONTEXT.get(user_id, {})
+    
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{BACKEND_URL}/api/alert/create",
-                json={"user_id": str(user_id), "query": text},
+                json={
+                    "user_id": str(user_id), 
+                    "query": text,
+                    "context": user_context_data # Pass context
+                },
                 headers=get_api_headers()
             ) as response:
                 if response.status != 200:
@@ -513,6 +520,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif status == "CREATED":
             await status_msg.edit_text(result.get("message"))
+            # Save context if symbol present
+            if result.get("config", {}).get("symbol"):
+                 USER_CONTEXT[user_id] = {"last_symbol": result.get("config", {}).get("symbol")}
 
         elif status == "PORTFOLIO_ADDED":
             await status_msg.edit_text(result.get("message"))
@@ -594,6 +604,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not symbol:
                 await status_msg.edit_text("❓ Which stock?")
             else:
+                # Store Context
+                USER_CONTEXT[user_id] = {"last_symbol": symbol}
+                
                 async with aiohttp.ClientSession() as session:
                      async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
                          if resp.status == 200:
