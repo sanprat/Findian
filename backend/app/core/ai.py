@@ -180,6 +180,7 @@ REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN, UBI=UNIONBANK). 
 Reject specific buy/sell recommendations.
 ALLOW general market questions, definitions, concepts, and market sentiment queries.
+CRITICAL: If user asks for "Volume", "High", "Low", "Gap up/down", "Market Cap" or "Price" of a specific stock, ALWAYS return 'CHECK_PRICE'. Do NOT use 'MARKET_INFO' for these data points.
 IMPORTANT: If asked "Why did [stock] move?" or "Reason for change", DO NOT invent news. Explain that you don't have live news feed, but list general reasons for such moves (earnings, sector trends, etc.).
 """
         user_content = query
