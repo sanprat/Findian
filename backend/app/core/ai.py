@@ -14,9 +14,8 @@ class AIAlertInterpreter:
         
         # Models requested by user (Prioritized)
         self.models = [
-            "GLM-4.5-Flash",    # Fast text model (Best for simple intents)
-            "GLM-4.6V-Flash",   # Multimodal Flash
-            "GLM-4.6V-FlashX"   # extended
+            "GLM-4.6V-Flash",   # Primary
+            "GLM-4.5-Flash"     # Fallback
         ]
         self.model = self.models[0] # Default to first
         
