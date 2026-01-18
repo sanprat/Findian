@@ -315,7 +315,8 @@ async def custom_screen(
     parsed = await ai.parse_screener_query(user_query)
 
     if "error" in parsed:
-        return {"success": False, "message": "Could not understand query."}
+        error_message = parsed.get("message", "Could not understand query. Please try: 'Stocks with high volume and RSI below 30'")
+        return {"success": False, "message": error_message}
 
     filters = parsed.get("filters", [])
     if not filters:
