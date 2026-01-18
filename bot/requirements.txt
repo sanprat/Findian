@@ -1,6 +1,6 @@
 # Bot requirements - rebuilt 2026-01-04 v4
 python-telegram-bot==20.8
-aiohttp==3.9.3
+aiohttp==3.13.3
 python-dotenv==1.0.1
 matplotlib
 pandas
