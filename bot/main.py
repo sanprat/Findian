@@ -53,9 +53,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Show keyboard immediately (don't wait for backend)
     keyboard = [
         [KeyboardButton("🔍 Screener"), KeyboardButton("💼 Portfolio")],
-        [KeyboardButton("💎 My Plan"), KeyboardButton("📖 Readme")],
-        [KeyboardButton("🚀 Upgrade to Pro"), KeyboardButton("🎟️ Redeem Code")],
-        [KeyboardButton("🔒 Privacy Policy")],
+        [KeyboardButton("📊 Stock Tools"), KeyboardButton("💎 My Plan")],
+        [KeyboardButton("📖 Readme"), KeyboardButton("🚀 Upgrade to Pro")],
+        [KeyboardButton("🎟️ Redeem Code"), KeyboardButton("🔒 Privacy Policy")],
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -349,6 +349,144 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             USER_STATES.pop(user_id, None)
             return
 
+    # --- STOCK TOOLS STATE HANDLERS ---
+    if current_state == "WAITING_FOR_CHART_SYMBOL":
+        if text.lower() in ["back", "cancel", "exit", "main menu"]:
+            USER_STATES.pop(user_id, None)
+            await update.message.reply_text("❌ Cancelled.")
+            await start(update, context)
+            return
+        
+        symbol = text.upper()
+        USER_STATES.pop(user_id, None)
+        status_msg = await update.message.reply_text(f"📊 Generating chart for {symbol}...")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as resp:
+                chart_data = await resp.json()
+            
+            if chart_data.get("success"):
+                import base64
+                image_data = base64.b64decode(chart_data["image"])
+                await update.message.reply_photo(
+                    photo=image_data,
+                    caption=f"📈 <b>{symbol}</b> - Price & Volume Chart",
+                    parse_mode="HTML"
+                )
+                await status_msg.delete()
+            else:
+                await status_msg.edit_text(f"❌ Could not generate chart for {symbol}.")
+        return
+
+    if current_state == "WAITING_FOR_FUNDAMENTALS_SYMBOL":
+        if text.lower() in ["back", "cancel", "exit", "main menu"]:
+            USER_STATES.pop(user_id, None)
+            await update.message.reply_text("❌ Cancelled.")
+            await start(update, context)
+            return
+        
+        symbol = text.upper()
+        USER_STATES.pop(user_id, None)
+        status_msg = await update.message.reply_text(f"🔄 Fetching fundamentals for {symbol}...")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
+                quote_data = await resp.json()
+        
+        from app.core.market_data import MarketDataService
+        market_data = MarketDataService()
+        fundamentals = market_data.get_fundamentals(symbol)
+        
+        if fundamentals:
+            d = fundamentals
+            pe = d.get("pe_ratio")
+            pe_str = f"{pe:.2f}" if pe else "N/A"
+            roe = d.get("roe")
+            roe_str = f"{roe * 100:.2f}%" if roe else "N/A"
+            mc = d.get("market_cap")
+            
+            def fmt_mc(n):
+                if not n:
+                    return "N/A"
+                if n >= 1e11:
+                    return f"₹{n / 1e7:,.0f} Cr"
+                if n >= 1e7:
+                    return f"₹{n / 1e7:,.0f} Cr"
+                return f"₹{n:,.0f}"
+            
+            mc_str = fmt_mc(mc)
+            pb = d.get("pb_ratio")
+            pb_str = f"{pb:.2f}" if pb else "N/A"
+            div = d.get("dividend_yield")
+            div_str = f"{div * 100:.2f}%" if div else "N/A"
+            
+            msg = (
+                f"📊 <b>{symbol} Fundamentals</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"P/E Ratio: <b>{pe_str}</b>\n"
+                f"ROE: <b>{roe_str}</b>\n"
+                f"P/B Ratio: {pb_str}\n"
+                f"Div Yield: {div_str}\n"
+                f"Market Cap: {mc_str}\n"
+                f"Sector: {d.get('sector', 'N/A')}\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"<i>Data provided by Yahoo Finance</i>"
+            )
+            await status_msg.edit_text(msg, parse_mode="HTML")
+        else:
+            await status_msg.edit_text(f"❌ Could not fetch fundamentals for {symbol}.")
+        return
+
+    if current_state == "WAITING_FOR_ANALYSIS_SYMBOL":
+        if text.lower() in ["back", "cancel", "exit", "main menu"]:
+            USER_STATES.pop(user_id, None)
+            await update.message.reply_text("❌ Cancelled.")
+            await start(update, context)
+            return
+        
+        symbol = text.upper()
+        USER_STATES.pop(user_id, None)
+        status_msg = await update.message.reply_text(f"🔄 Analyzing {symbol}...")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
+                analysis_data = await resp.json()
+            
+            async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as chart_resp:
+                chart_data = await chart_resp.json()
+            
+            if analysis_data.get("success"):
+                d = analysis_data["data"]
+                trend_emoji = "🚀" if d["trend"] == "BULLISH" else "📉"
+                vol_emoji = "🔥" if "High" in d["vol_status"] or "Explosion" in d["vol_status"] else "📊"
+                
+                msg = (
+                    f"🔍 <b>Analysis: {d['symbol']}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"Price: <b>₹{d['price']}</b> ({d['change_percent']:+.2f}%)\n"
+                    f"Trend: <b>{d['trend']}</b> {trend_emoji}\n"
+                    f"MA 20: ₹{d['ma_20']}\n"
+                    f"Avg Vol (10d): {d['avg_volume']:,}\n"
+                    f"Vol Today: <b>{d['volume']:,}</b>\n"
+                    f"Status: {d['vol_status']} {vol_emoji}\n"
+                    f"━━━━━━━━━━━━━━━━━━━"
+                )
+                
+                if chart_data.get("success"):
+                    import base64
+                    image_data = base64.b64decode(chart_data["image"])
+                    await update.message.reply_photo(
+                        photo=image_data,
+                        caption=msg,
+                        parse_mode="HTML"
+                    )
+                    await status_msg.delete()
+                else:
+                    await status_msg.edit_text(msg, parse_mode="HTML")
+            else:
+                await status_msg.edit_text(f"❌ Could not analyze {symbol}.")
+        return
+
     # --- MENU HANDLERS ---
     # Intercept Greetings or "start" keyword
     if text.lower() == "start":
@@ -436,6 +574,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if "my plan" in text.lower() or text == "💎 My Plan":
         await show_plan_status(update, context)
+        return
+
+    if text == "📊 Stock Tools":
+        keyboard = [
+            [KeyboardButton("📈 Chart"), KeyboardButton("💎 Fundamentals")],
+            [KeyboardButton("📊 Technical Analysis")],
+            [KeyboardButton("🏠 Main Menu")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(
+            "📊 <b>Stock Tools</b>\n\n"
+            "Select a tool to analyze any stock:\n\n"
+            "• <b>Chart:</b> View price & volume chart\n"
+            "• <b>Fundamentals:</b> P/E, ROE, Market Cap, etc.\n"
+            "• <b>Technical Analysis:</b> Volume trends, MA, signals",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
         return
 
     # --- NEW MENU HANDLERS ---
@@ -722,8 +878,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "❓ Help":
+        await update.message.reply_text("❓ Help: Try: 'Alert if RELIANCE > 2500' or 'Bought 50 INFY at 1400'")
+        return
+
+    # --- STOCK TOOLS HANDLERS ---
+    if text == "📈 Chart":
+        USER_STATES[user_id] = "WAITING_FOR_CHART_SYMBOL"
         await update.message.reply_text(
-            "Try: 'Alert if RELIANCE > 2500' or 'Bought 50 INFY at 1400'"
+            "📈 <b>Stock Chart</b>\n\n"
+            "Enter the stock symbol (e.g., HDFC, TCS, RELIANCE):",
+            parse_mode="HTML"
+        )
+        return
+
+    if text == "💎 Fundamentals":
+        USER_STATES[user_id] = "WAITING_FOR_FUNDAMENTALS_SYMBOL"
+        await update.message.reply_text(
+            "💎 <b>Stock Fundamentals</b>\n\n"
+            "Enter the stock symbol (e.g., HDFC, TCS, RELIANCE):",
+            parse_mode="HTML"
+        )
+        return
+
+    if text == "📊 Technical Analysis":
+        USER_STATES[user_id] = "WAITING_FOR_ANALYSIS_SYMBOL"
+        await update.message.reply_text(
+            "📊 <b>Technical Analysis</b>\n\n"
+            "Enter the stock symbol (e.g., HDFC, TCS, RELIANCE):",
+            parse_mode="HTML"
         )
         return
 
