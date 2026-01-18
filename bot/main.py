@@ -952,6 +952,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         else:
                             await status_msg.edit_text("❌ Quote Service Error.")
 
+        elif intent == "ANALYZE_STOCK":
+            symbol = result.get("data", {}).get("symbol")
+            if not symbol:
+                 await status_msg.edit_text("❓ Which stock?")
+            else:
+                 # Fetch Analysis
+                 async with aiohttp.ClientSession() as session:
+                     # 1. Get Text Analysis
+                     async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
+                         analysis_data = await resp.json()
+                     
+                     # 2. Get Chart (Image)
+                     async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as chart_resp:
+                         chart_data = await chart_resp.json()
+                     
+                     if analysis_data.get("success"):
+                         d = analysis_data["data"]
+                         
+                         trend_emoji = "🚀" if d["trend"] == "BULLISH" else "📉"
+                         vol_emoji = "🔥" if "High" in d["vol_status"] or "Explosion" in d["vol_status"] else "📊"
+                         
+                         msg = (
+                             f"🔍 <b>Analysis: {d['symbol']}</b>\n"
+                             f"━━━━━━━━━━━━━━━━━━━\n"
+                             f"Price: <b>₹{d['price']}</b> ({d['change_percent']:+.2f}%)\n"
+                             f"Trend: <b>{d['trend']}</b> {trend_emoji}\n"
+                             f"Avg Vol (10d): {d['avg_volume']:,}\n"
+                             f"Vol Today: <b>{d['volume']:,}</b>\n"
+                             f"Status: {d['vol_status']} {vol_emoji}\n"
+                             f"━━━━━━━━━━━━━━━━━━━"
+                         )
+                         
+                         # Send Chart if available
+                         if chart_data.get("success"):
+                             import base64
+                             image_data = base64.b64decode(chart_data["image"])
+                             await update.message.reply_photo(
+                                 photo=image_data,
+                                 caption=msg,
+                                 parse_mode="HTML"
+                             )
+                             await status_msg.delete() # Remove "Analysing..." message
+                         else:
+                             await status_msg.edit_text(msg, parse_mode="HTML")
+                     else:
+                         await status_msg.edit_text(f"❌ Could not analyze {symbol}.")
+                         
         elif status == "ERROR":
             await status_msg.edit_text(
                 f"❌ {result.get('message', 'An error occurred.')}"

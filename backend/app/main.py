@@ -1296,6 +1296,18 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 "message": f"Could not fetch fundamentals for {symbol}",
             }
 
+
+    # --- HANDLE ANALYSIS ---
+    if result.get("status") == "ANALYZE_STOCK":
+        symbol = result.get("data", {}).get("symbol")
+        if symbol:
+            return {
+                "success": True,
+                "status": "ANALYZE_STOCK",
+                "symbol": symbol,
+                "data": result.get("data")
+            }
+            
     if result.get("status") == "MARKET_INFO":
         return {
             "success": True,
@@ -1315,6 +1327,31 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
         "status": "ERROR",
         "message": "Unexpected AI response format",
     }
+
+
+@app.get("/api/analyze/{symbol}")
+async def analyze_stock(symbol: str):
+    """Returns technical analysis of a stock."""
+    from app.core.security import validate_symbol
+    
+    if not validate_symbol(symbol.upper()):
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+        
+    data = market_data.get_analysis(symbol.upper())
+    if data:
+        return {"success": True, "data": data}
+    return {"success": False, "message": "Could not analyze stock."}
+
+
+@app.get("/api/chart/{symbol}")
+async def get_chart(symbol: str):
+    """Returns a base64 encoded chart image."""
+    from app.core.charting import generate_stock_chart
+    
+    chart_base64 = generate_stock_chart(symbol.upper())
+    if chart_base64:
+        return {"success": True, "image": chart_base64}
+    return {"success": False, "message": "Could not generate chart."}
 
 
 # --- SUBSCRIPTION ENDPOINTS ---

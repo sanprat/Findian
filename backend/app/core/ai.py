@@ -163,7 +163,7 @@ class AIAlertInterpreter:
         """
         system_prompt = """Stock assistant. Return JSON only.
 
-INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO, VIEW_PORTFOLIO, DELETE_PORTFOLIO, MARKET_INFO, CHECK_FUNDAMENTALS
+INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO, VIEW_PORTFOLIO, DELETE_PORTFOLIO, MARKET_INFO, CHECK_FUNDAMENTALS, ANALYZE_STOCK
 
 JSON:
 CHECK_PRICE: {"intent":"CHECK_PRICE","status":"CONFIRMED","data":{"symbol":"TICKER"}}
@@ -174,13 +174,15 @@ VIEW_PORTFOLIO: {"intent":"VIEW_PORTFOLIO","status":"CONFIRMED"}
 DELETE_PORTFOLIO: {"intent":"DELETE_PORTFOLIO","status":"CONFIRMED","data":{"symbol":"TICKER"}}
 MARKET_INFO: {"intent":"MARKET_INFO","status":"MARKET_INFO","data":{"answer":"Concise answer string here."}}
 CHECK_FUNDAMENTALS: {"intent":"CHECK_FUNDAMENTALS","status":"CONFIRMED","data":{"symbol":"TICKER"}}
+ANALYZE_STOCK: {"intent":"ANALYZE_STOCK","status":"CONFIRMED","data":{"symbol":"TICKER"}}
 NEEDS_CLARIFICATION: {"status":"NEEDS_CLARIFICATION","question":"Which stock?"}
 REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 
 Rules: Convert aliases (RIL=RELIANCE, SBI=SBIN, UBI=UNIONBANK). 
 Reject specific buy/sell recommendations.
 ALLOW general market questions, definitions, concepts, and market sentiment queries.
-CRITICAL: If user asks for "Volume", "High", "Low", "Gap up/down", "Market Cap" or "Price" of a specific stock, ALWAYS return 'CHECK_PRICE'. Do NOT use 'MARKET_INFO' for these data points.
+CRITICAL: If user asks for "Volume", "High", "Low", "Gap up/down", "Market Cap" or "Price" WITHOUT asking for specific trends or analysis, return 'CHECK_PRICE'.
+CRITICAL: If user asks for "Chart", "Volume Trend", "Technical Analysis", "Moving Average", or "Compare Volume", return 'ANALYZE_STOCK'.
 IMPORTANT: If asked "Why did [stock] move?" or "Reason for change", DO NOT invent news. Explain that you don't have live news feed, but list general reasons for such moves (earnings, sector trends, etc.).
 """
         user_content = query

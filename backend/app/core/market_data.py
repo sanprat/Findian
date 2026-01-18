@@ -174,3 +174,63 @@ class MarketDataService:
         except Exception as e:
             logger.error(f"Fundamentals Fetch Error for {symbol}: {e}")
             return None
+    def get_analysis(self, symbol: str) -> Optional[Dict]:
+        """
+        Analyze stock for volume trends, breakouts, and price action.
+        """
+        try:
+            import yfinance as yf
+            import pandas as pd
+            from app.core.symbol_tokens import resolve_alias
+            
+            symbol = resolve_alias(symbol)
+            yf_symbol = f"{symbol}.NS"
+            
+            # Fetch 1 month of data
+            ticker = yf.Ticker(yf_symbol)
+            hist = ticker.history(period="1mo")
+            
+            if hist.empty or len(hist) < 5:
+                return {"error": "Not enough data"}
+                
+            # Current Data
+            last_day = hist.iloc[-1]
+            prev_day = hist.iloc[-2]
+            
+            # Volume Analysis
+            msg_vol = ""
+            vol_avg_10 = hist["Volume"].tail(10).mean()
+            curr_vol = last_day["Volume"]
+            
+            if curr_vol > (vol_avg_10 * 2):
+                msg_vol = "Volume Explosion! (2x Average)"
+            elif curr_vol > (vol_avg_10 * 1.5):
+                msg_vol = "High Volume (1.5x Average)"
+            elif curr_vol < (vol_avg_10 * 0.5):
+                msg_vol = "Low Volume"
+            else:
+                msg_vol = "Average Volume"
+                
+            # Trend Analysis (Simple MA)
+            ma_20 = hist["Close"].tail(20).mean() if len(hist) >= 20 else hist["Close"].mean()
+            trend = "BULLISH" if last_day["Close"] > ma_20 else "BEARISH"
+            
+            # Percent Change
+            close = last_day["Close"]
+            prev_close = prev_day["Close"]
+            change_pct = ((close - prev_close) / prev_close) * 100
+            
+            return {
+                "symbol": symbol,
+                "price": round(close, 2),
+                "change_percent": round(change_pct, 2),
+                "volume": int(curr_vol),
+                "avg_volume": int(vol_avg_10),
+                "vol_status": msg_vol,
+                "trend": trend,
+                "ma_20": round(ma_20, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"Analysis Error for {symbol}: {e}")
+            return None
