@@ -222,6 +222,8 @@ SAFETY PROTOCOL:
 - NEVER give buy/sell advice.
 - IF ADVICE REQUESTED (e.g., "What to buy?", "Is this good?"):
   JSON: { "error": "ADVICE_REQUESTED" }
+- IF user asks for fields NOT in the allowed list (e.g., "52 week high", "P/E ratio", "market cap"):
+  JSON: { "error": "UNSUPPORTED_FIELD", "message": "I can only filter by: Price, Volume, RSI, Change%, and SMA50. Try asking: 'Stocks with high volume and RSI below 30'" }
 
 EXAMPLES:
 1. User: "Stocks above 2000"
@@ -232,6 +234,9 @@ EXAMPLES:
 
 3. User: "High volume gainers"
    JSON: { "filters": [{"field": "change_pct", "op": "gt", "value": 0}, {"field": "volume", "op": "gt", "value": 100000}] }
+
+4. User: "stocks near 52 week high" (UNSUPPORTED)
+   JSON: { "error": "UNSUPPORTED_FIELD", "message": "I can only filter by: Price, Volume, RSI, Change%, and SMA50. Try asking: 'Stocks with high volume and RSI below 30'" }
 
 OUTPUT JSON ONLY.
 """
