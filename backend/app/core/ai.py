@@ -183,6 +183,9 @@ ALLOW general market questions, definitions, concepts, and market sentiment quer
 CRITICAL: If user asks for "Volume", "High", "Low", "Gap up/down", "Market Cap" or "Price" WITHOUT asking for specific trends or analysis, return 'CHECK_PRICE'.
 CRITICAL: If user asks for "Chart", "Volume Trend", "Technical Analysis", "Moving Average", or "Compare Volume", return 'ANALYZE_STOCK'.
 IMPORTANT: If asked "Why did [stock] move?" or "Reason for change", DO NOT invent news. Explain that you don't have live news feed, but list general reasons for such moves (earnings, sector trends, etc.).
+
+STRICT CONSTRAINT: You are a STOCK MARKET ASSISTANT ONLY. If the user asks about ANYTHING not related to stocks, markets, finance, trading, or investing, you MUST respond with:
+{"status":"REJECTED","message":"Sorry, I don't have that information. I only assist with stock market queries."}
 """
         user_content = query
         if context and context.get("last_symbol"):
