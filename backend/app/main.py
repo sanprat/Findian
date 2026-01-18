@@ -1296,18 +1296,18 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                 "message": f"Could not fetch fundamentals for {symbol}",
             }
 
+        # --- HANDLE ANALYSIS ---
+        elif intent == "ANALYZE_STOCK":
+            symbol = result.get("data", {}).get("symbol")
+            if symbol:
+                return {
+                    "success": True,
+                    "status": "ANALYZE_STOCK",
+                    "symbol": symbol,
+                    "data": result.get("data")
+                }
 
-    # --- HANDLE ANALYSIS ---
-    if result.get("status") == "ANALYZE_STOCK":
-        symbol = result.get("data", {}).get("symbol")
-        if symbol:
-            return {
-                "success": True,
-                "status": "ANALYZE_STOCK",
-                "symbol": symbol,
-                "data": result.get("data")
-            }
-            
+
     if result.get("status") == "MARKET_INFO":
         return {
             "success": True,
