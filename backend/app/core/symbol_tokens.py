@@ -99,7 +99,9 @@ SYMBOL_ALIASES = {
 
 def resolve_alias(symbol: str) -> str:
     """Resolve common aliases to official NSE symbol"""
-    return SYMBOL_ALIASES.get(symbol.upper(), symbol.upper())
+    # Remove spaces (e.g., "TATA STEEL" -> "TATASTEEL")
+    clean_symbol = symbol.upper().replace(" ", "")
+    return SYMBOL_ALIASES.get(clean_symbol, clean_symbol)
 
 
 
