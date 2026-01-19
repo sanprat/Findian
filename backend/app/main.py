@@ -168,10 +168,19 @@ async def get_quote(symbol: str):
     # Input Validation
     from app.core.security import validate_symbol
 
-    if not validate_symbol(symbol.upper()):
+@app.get("/api/quote/{symbol}")
+async def get_quote(symbol: str):
+    """Fetches live quote for a symbol."""
+    # Input Validation
+    from app.core.security import validate_symbol
+    
+    # Sanitize: Remove spaces (TATA STEEL -> TATASTEEL)
+    clean_symbol = symbol.upper().replace(" ", "")
+
+    if not validate_symbol(clean_symbol):
         raise HTTPException(status_code=400, detail="Invalid symbol format")
 
-    quote = market_data.get_quote(symbol.upper())
+    quote = market_data.get_quote(clean_symbol)
     if quote:
         return {"success": True, "data": quote}
     return {"success": False, "message": "Symbol not found or Market Data error."}
@@ -1358,10 +1367,12 @@ async def analyze_stock(symbol: str):
     """Returns technical analysis of a stock."""
     from app.core.security import validate_symbol
     
-    if not validate_symbol(symbol.upper()):
+    clean_symbol = symbol.upper().replace(" ", "")
+    
+    if not validate_symbol(clean_symbol):
         raise HTTPException(status_code=400, detail="Invalid symbol")
         
-    data = market_data.get_analysis(symbol.upper())
+    data = market_data.get_analysis(clean_symbol)
     if data:
         return {"success": True, "data": data}
     return {"success": False, "message": "Could not analyze stock."}
@@ -1372,7 +1383,8 @@ async def get_chart(symbol: str):
     """Returns a base64 encoded chart image."""
     from app.core.charting import generate_stock_chart
     
-    chart_base64 = generate_stock_chart(symbol.upper())
+    clean_symbol = symbol.upper().replace(" ", "")
+    chart_base64 = generate_stock_chart(clean_symbol)
     if chart_base64:
         return {"success": True, "image": chart_base64}
     return {"success": False, "message": "Could not generate chart."}
