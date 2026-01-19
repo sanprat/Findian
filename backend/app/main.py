@@ -341,7 +341,16 @@ async def custom_screen(
             ltp = float(item.get("ltp", 0))
             change = float(item.get("change_percent", 0))
             volume = float(item.get("volume", 0))
-            rsi = float(item.get("rsi", 50))
+            rsi_val = item.get("rsi", 50)
+
+            # Handle Infinity/NaN values that might be in Redis from old calculations
+            if rsi_val == "inf" or rsi_val == "Infinity" or rsi_val == "-inf":
+                rsi = 50.0  # Default neutral value
+            else:
+                rsi = float(rsi_val)
+                # Handle actual infinity float values
+                if rsi == float('inf') or rsi == float('-inf'):
+                    rsi = 50.0
 
             match = True
             for f in filters:
@@ -466,7 +475,16 @@ async def prebuilt_screen(scan_type: str):
             ltp = float(item.get("ltp", 0))
             change = float(item.get("change_percent", 0))
             volume = float(item.get("volume", 0))
-            rsi = float(item.get("rsi", 50))
+            rsi_val = item.get("rsi", 50)
+
+            # Handle Infinity/NaN values that might be in Redis from old calculations
+            if rsi_val == "inf" or rsi_val == "Infinity" or rsi_val == "-inf":
+                rsi = 50.0  # Default neutral value
+            else:
+                rsi = float(rsi_val)
+                # Handle actual infinity float values
+                if rsi == float('inf') or rsi == float('-inf'):
+                    rsi = 50.0
 
             match = False
 

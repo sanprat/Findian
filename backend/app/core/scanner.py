@@ -209,13 +209,18 @@ class MarketScannerService:
                                          
                                          avg_gain = gain.ewm(com=13, adjust=False).mean()
                                          avg_loss = loss.ewm(com=13, adjust=False).mean()
-                                         
-                                         rs = avg_gain / avg_loss
-                                         df_calc['RSI_14'] = 100 - (100 / (1 + rs))
 
-                                         val = df_calc['RSI_14'].iloc[-1]
-                                         if not pd.isna(val):
-                                             rsi_val = float(val)
+                                         # Handle division by zero (no losses = strong uptrend)
+                                         rs = avg_gain / avg_loss if avg_loss.iloc[-1] > 0 else float('inf')
+
+                                         # Handle infinity case (RSI = 100 when rs is infinity)
+                                         if rs.iloc[-1] == float('inf'):
+                                             rsi_val = 100.0
+                                         else:
+                                             df_calc['RSI_14'] = 100 - (100 / (1 + rs))
+                                             val = df_calc['RSI_14'].iloc[-1]
+                                             if not pd.isna(val):
+                                                 rsi_val = float(val)
                              except Exception as e:
                                  # logger.warning(f"RSI Calc Error {sym}: {e}")
                                  pass
