@@ -353,6 +353,7 @@ async def custom_screen(
             change = sanitize(item.get("change_percent", 0))
             volume = sanitize(item.get("volume", 0))
             rsi = sanitize(item.get("rsi", 50))
+            pct_52w = sanitize(item.get("pct_from_52w_high", -100))
 
             match = True
             for f in filters:
@@ -370,6 +371,8 @@ async def custom_screen(
                     data_val = volume
                 elif field == "rsi":
                     data_val = rsi
+                elif field == "pct_from_52w_high":
+                    data_val = pct_52w
 
                 if op == "gt" and not (data_val > val):
                     match = False

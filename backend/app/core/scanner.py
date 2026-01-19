@@ -26,6 +26,8 @@ class MarketScannerService:
         self.is_running = False
         self._thread = None
         self.avg_volumes = {} # Cache for baselines
+        self.high_52w = {}    # Cache for 52w High
+        self.low_52w = {}     # Cache for 52w Low
 
     def start(self):
         """Starts the scanner loop in a separate thread."""
@@ -41,10 +43,10 @@ class MarketScannerService:
 
     def _fetch_historical_baselines(self):
         """
-        Fetches 10-day average volume for all symbols using yfinance.
+        Fetches 10-day average volume AND 52-week High/Low for all symbols.
         Runs once on startup.
         """
-        logger.info("📊 Fetching historical baselines (Avg Volume) via yfinance...")
+        logger.info("📊 Fetching historical baselines (Avg Vol, 52w High/Low)...")
         import yfinance as yf
         
         try:
@@ -52,9 +54,9 @@ class MarketScannerService:
             tickers_list = [f"{sym}.NS" for sym in self.symbols]
             tickers_str = " ".join(tickers_list)
             
-            logger.info(f"Downloading batch history for {len(tickers_list)} stocks...")
+            logger.info(f"Downloading batch history (1y) for {len(tickers_list)} stocks...")
             # threads=True enables parallel fetching
-            data = yf.download(tickers_str, period="1mo", threads=True, group_by='ticker')
+            data = yf.download(tickers_str, period="1y", threads=True, group_by='ticker')
             
             count = 0
             for sym in self.symbols:
@@ -63,18 +65,24 @@ class MarketScannerService:
                     try:
                         hist = data[f"{sym}.NS"]
                     except KeyError:
-                        # Fallback if ticker lookup fails in batch result
+                        # Fallback
                         self.avg_volumes[sym] = 500000
                         continue
 
                     if not hist.empty:
-                        # Drop NaN rows (common in batch fetch for missing days)
+                        # Drop NaN rows
                         hist = hist.dropna()
                         if not hist.empty:
-                             # avg volume of last 10 days
+                             # 1. Avg Volume (last 10 days)
                              recent = hist.tail(10)
                              avg_vol = recent['Volume'].mean()
                              self.avg_volumes[sym] = avg_vol
+                             
+                             # 2. 52-Week High/Low (last 252 trading days approx 1y)
+                             # Ensure we take the max of High column and min of Low column
+                             self.high_52w[sym] = hist['High'].max()
+                             self.low_52w[sym] = hist['Low'].min()
+                             
                              count += 1
                         else:
                              self.avg_volumes[sym] = 500000
@@ -145,6 +153,10 @@ class MarketScannerService:
                                 prev_close = quote['close']
                                 change_pct = ((ltp - prev_close) / prev_close) * 100 if prev_close > 0 else 0
                                  
+                                h52 = float(self.high_52w.get(sym, 0))
+                                l52 = float(self.low_52w.get(sym, 0))
+                                pct_52w = ((ltp - h52) / h52 * 100) if h52 > 0 else -100.0
+
                                 data_to_store = {
                                     "symbol": sym,
                                     "ltp": ltp,
@@ -153,7 +165,10 @@ class MarketScannerService:
                                     "high": quote.get('high', 0),
                                     "low": quote.get('low', 0),
                                     "prev_close": prev_close,
-                                    "avg_volume": int(self.avg_volumes.get(sym, 0))
+                                    "avg_volume": int(self.avg_volumes.get(sym, 0)),
+                                    "high_52w": h52,
+                                    "low_52w": l52,
+                                    "pct_from_52w_high": round(pct_52w, 2)
                                 }
                         else:
                             # Market is closed - use historical data (last 2 trading days)
@@ -167,6 +182,10 @@ class MarketScannerService:
                                     prev_close = float(prev_day['Close'])
                                     change_pct = ((ltp - prev_close) / prev_close) * 100
                                     
+                                    h52 = float(self.high_52w.get(sym, 0))
+                                    l52 = float(self.low_52w.get(sym, 0))
+                                    pct_52w = ((ltp - h52) / h52 * 100) if h52 > 0 else -100.0
+                                    
                                     data_to_store = {
                                         "symbol": sym,
                                         "ltp": ltp,
@@ -175,7 +194,10 @@ class MarketScannerService:
                                         "high": float(last_day['High']),
                                         "low": float(last_day['Low']),
                                         "prev_close": prev_close,
-                                        "avg_volume": int(self.avg_volumes.get(sym, 0))
+                                        "avg_volume": int(self.avg_volumes.get(sym, 0)),
+                                        "high_52w": h52,
+                                        "low_52w": l52,
+                                        "pct_from_52w_high": round(pct_52w, 2)
                                     }
                                     
                     except Exception as e:
