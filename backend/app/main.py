@@ -1362,6 +1362,22 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/fundamentals/{symbol}")
+async def get_fundamentals(symbol: str):
+    """Returns fundamental data for a stock."""
+    from app.core.security import validate_symbol
+    
+    clean_symbol = symbol.upper().replace(" ", "")
+    
+    if not validate_symbol(clean_symbol):
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+        
+    data = market_data.get_fundamentals(clean_symbol)
+    if data:
+        return {"success": True, "data": data}
+    return {"success": False, "message": "Could not fetch fundamentals."}
+
+
 @app.get("/api/analyze/{symbol}")
 async def analyze_stock(symbol: str):
     """Returns technical analysis of a stock."""

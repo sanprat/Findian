@@ -393,12 +393,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
                 quote_data = await resp.json()
         
-        from app.core.market_data import MarketDataService
-        market_data = MarketDataService()
-        fundamentals = market_data.get_fundamentals(symbol)
+        # Call Backend API
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{BACKEND_URL}/api/fundamentals/{symbol}", headers=get_api_headers()) as resp:
+                data = await resp.json()
         
-        if fundamentals:
-            d = fundamentals
+        if data.get("success"):
+            d = data.get("data", {})
             pe = d.get("pe_ratio")
             pe_str = f"{pe:.2f}" if pe else "N/A"
             roe = d.get("roe")
