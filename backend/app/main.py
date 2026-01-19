@@ -337,20 +337,22 @@ async def custom_screen(
             continue
 
         try:
-            # Convert Redis Map to Float
-            ltp = float(item.get("ltp", 0))
-            change = float(item.get("change_percent", 0))
-            volume = float(item.get("volume", 0))
-            rsi_val = item.get("rsi", 50)
+            # Helper to sanitize floats
+            def sanitize(val):
+                try:
+                    f = float(val)
+                    import math
+                    if math.isnan(f) or math.isinf(f):
+                        return 0.0
+                    return f
+                except:
+                    return 0.0
 
-            # Handle Infinity/NaN values that might be in Redis from old calculations
-            if rsi_val == "inf" or rsi_val == "Infinity" or rsi_val == "-inf":
-                rsi = 50.0  # Default neutral value
-            else:
-                rsi = float(rsi_val)
-                # Handle actual infinity float values
-                if rsi == float('inf') or rsi == float('-inf'):
-                    rsi = 50.0
+            # Convert Redis Map to Float
+            ltp = sanitize(item.get("ltp", 0))
+            change = sanitize(item.get("change_percent", 0))
+            volume = sanitize(item.get("volume", 0))
+            rsi = sanitize(item.get("rsi", 50))
 
             match = True
             for f in filters:
@@ -359,7 +361,7 @@ async def custom_screen(
                 val = f["value"]
 
                 # Check mapping (ltp, volume, etc)
-                data_val = 0
+                data_val = 0.0
                 if field == "ltp":
                     data_val = ltp
                 elif field == "change_pct":
