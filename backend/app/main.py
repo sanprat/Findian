@@ -702,6 +702,52 @@ def delete_saved_scan(scan_id: int, user_id: str, db: Session = Depends(get_db))
         return {"success": False, "message": "An error occurred. Please try again."}
 
 
+class FeedbackRequest(BaseModel):
+    user_id: str
+    category: str  # ISSUE or FEEDBACK
+    message: str
+
+
+@app.post("/api/support/submit")
+def submit_feedback(payload: FeedbackRequest, db: Session = Depends(get_db)):
+    """Submit user feedback or issue."""
+    from app.core.security import validate_user_id, sanitize_string, sanitize_error_message
+    
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(payload.user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    # SECURITY: Sanitize inputs
+    safe_category = sanitize_string(payload.category, max_length=20).upper()
+    safe_message = sanitize_string(payload.message, max_length=2000)
+
+    if safe_category not in ["ISSUE", "FEEDBACK"]:
+        raise HTTPException(status_code=400, detail="Invalid category")
+
+    if not safe_message or len(safe_message) < 5:
+        raise HTTPException(status_code=400, detail="Message too short")
+
+    try:
+        from app.db.models import UserFeedback
+
+        feedback = UserFeedback(
+            user_id=validated_user_id,
+            category=safe_category,
+            message=safe_message
+        )
+        db.add(feedback)
+        db.commit()
+        
+        # Log for email routing (simulated)
+        logging.info(f"📧 EMAIL_ROUTING: Send to sanprat@pybankers.com | Type: {safe_category} | User: {validated_user_id} | Msg: {safe_message}")
+        
+        return {"success": True, "message": "Feedback received. We will contact you if needed."}
+    except Exception as e:
+        logging.error(f"Feedback error: {type(e).__name__}")
+        return {"success": False, "message": sanitize_error_message(e)}
+
+
 class AlertResponse(BaseModel):
     success: bool
     status: str

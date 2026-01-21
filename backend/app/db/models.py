@@ -109,6 +109,17 @@ class UserWatchlist(Base):
 
     __table_args__ = (Index('idx_watchlist_user_symbol', 'user_id', 'symbol'),)
 
+class UserFeedback(Base):
+    """Stores user feedback and issues."""
+    __tablename__ = "user_feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    category = Column(String(50)) # ISSUE, FEEDBACK
+    message = Column(Text)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 class AlertHistory(Base):
     __tablename__ = "alert_history"
 

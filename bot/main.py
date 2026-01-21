@@ -54,8 +54,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [KeyboardButton("🔍 Screener"), KeyboardButton("💼 Portfolio")],
         [KeyboardButton("📊 Stock Tools"), KeyboardButton("💎 My Plan")],
-        [KeyboardButton("📖 Readme"), KeyboardButton("🚀 Upgrade to Pro")],
-        [KeyboardButton("🎟️ Redeem Code"), KeyboardButton("🔒 Privacy Policy")],
+        [KeyboardButton("📖 Readme"), KeyboardButton("📞 Contact Support")],
+        [KeyboardButton("🔒 Privacy Policy")],
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -252,6 +252,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("❌ Failed to save.")
 
         USER_STATES.pop(user_id, None)
+        return
+
+    # --- SUPPORT STATE HANDLERS ---
+    if current_state in ["WAITING_FOR_ISSUE", "WAITING_FOR_FEEDBACK"]:
+        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]:
+            USER_STATES.pop(user_id, None)
+            await start(update, context)
+            return
+        
+        category = "ISSUE" if current_state == "WAITING_FOR_ISSUE" else "FEEDBACK"
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                payload = {
+                    "user_id": str(user_id),
+                    "category": category,
+                    "message": text
+                }
+                async with session.post(
+                    f"{BACKEND_URL}/api/support/submit",
+                    json=payload,
+                    headers=get_api_headers(),
+                ) as resp:
+                    if resp.status == 200:
+                        await update.message.reply_text(
+                            f"✅ <b>{category.title()} Submitted!</b>\nThank you for reaching out. We will review it shortly.", 
+                            parse_mode="HTML"
+                        )
+                    else:
+                        await update.message.reply_text("❌ Failed to submit. Please try again later.")
+            except Exception as e:
+                logger.error(f"Support Submit Error: {e}")
+                await update.message.reply_text("❌ Connection Error.")
+        
+        USER_STATES.pop(user_id, None)
+        await start(update, context)
         return
 
     if current_state == "WAITING_FOR_SCAN":
@@ -574,7 +610,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if "my plan" in text.lower() or text == "💎 My Plan":
+        # Show Sub-Menu
+        keyboard = [
+            [KeyboardButton("🚀 Upgrade to Pro"), KeyboardButton("🎟️ Redeem Code")],
+            [KeyboardButton("🏠 Main Menu")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text("💎 <b>My Plan Menu</b>", reply_markup=reply_markup, parse_mode="HTML")
         await show_plan_status(update, context)
+        return
+    
+    if text == "📞 Contact Support":
+        keyboard = [
+            [KeyboardButton("⚠️ Raise Issue"), KeyboardButton("📝 Provide Feedback")],
+            [KeyboardButton("🏠 Main Menu")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(
+            "📞 <b>Contact Support</b>\n\nHow can we help you today?",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+        return
+    
+    if text == "⚠️ Raise Issue":
+        USER_STATES[user_id] = "WAITING_FOR_ISSUE"
+        await update.message.reply_text(
+            "⚠️ <b>Raise an Issue</b>\n\nPlease describe the issue you are facing:",
+            parse_mode="HTML",
+            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Back")]], resize_keyboard=True)
+        )
+        return
+        
+    if text == "📝 Provide Feedback":
+        USER_STATES[user_id] = "WAITING_FOR_FEEDBACK"
+        await update.message.reply_text(
+            "📝 <b>Provide Feedback</b>\n\nWe'd love to hear your thoughts! Type your message below:",
+            parse_mode="HTML",
+             reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Back")]], resize_keyboard=True)
+        )
         return
 
     if text == "📊 Stock Tools":
