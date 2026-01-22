@@ -17,9 +17,9 @@ DATABASE_URL = os.getenv('DATABASE_URL', '')
 
 if not DATABASE_URL:
     # Try constructing from individual vars
-    db_user = env_vars.get('DB_USER', 'sanprat')
-    db_password = env_vars.get('DB_PASSWORD', 'LetsLearn@2025')
-    db_name = env_vars.get('DB_NAME', 'pystock')
+    db_user = env_vars.get('DB_USER')
+    db_password = env_vars.get('DB_PASSWORD')
+    db_name = env_vars.get('DB_NAME')
     
     # Try Railway connection
     print("Enter your Railway MySQL DATABASE_URL:")

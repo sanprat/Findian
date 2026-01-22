@@ -708,8 +708,10 @@ class FeedbackRequest(BaseModel):
     message: str
 
 
+from fastapi import BackgroundTasks
+
 @app.post("/api/support/submit")
-def submit_feedback(payload: FeedbackRequest, db: Session = Depends(get_db)):
+def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Submit user feedback or issue."""
     from app.core.security import validate_user_id, sanitize_string, sanitize_error_message
     
@@ -729,10 +731,27 @@ def submit_feedback(payload: FeedbackRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Message too short")
 
     try:
-        from app.db.models import UserFeedback
+        from app.db.models import UserFeedback, User
+        
+        # Resolve Telegram ID to Internal User ID
+        # validated_user_id is the Telegram ID (BigInt)
+        user = db.query(User).filter(User.telegram_id == validated_user_id).first()
+        
+        internal_user_id = user.id if user else None
+        
+        # If user not found, we can still save it with NULL user_id or handle gracefully
+        # Since user_id is FK and nullable is False (by default without nullable=True), 
+        # we might need a fallback. But likely user exists if they are using the bot.
+        # If user doesn't exist, we can't save to this table if FK is strict.
+        
+        if not user:
+             # Log warning and maybe return error, or proceed if nullable.
+             logging.warning(f"Feedback submitted by unknown user: {validated_user_id}")
+             # For now, let's assume strict FK and fail if user not found, as bot user should exist.
+             return {"success": False, "message": "User not registered. Please /start first."}
 
         feedback = UserFeedback(
-            user_id=validated_user_id,
+            user_id=internal_user_id,
             category=safe_category,
             message=safe_message
         )
@@ -740,7 +759,24 @@ def submit_feedback(payload: FeedbackRequest, db: Session = Depends(get_db)):
         db.commit()
         
         # Log for email routing (simulated)
-        logging.info(f"📧 EMAIL_ROUTING: Send to sanprat@pybankers.com | Type: {safe_category} | User: {validated_user_id} | Msg: {safe_message}")
+        # Send Email in Background
+        from app.core.email_utils import send_email_background
+        
+        subject = f"Pystock: New {safe_category} from User {validated_user_id}"
+        body = (
+            f"New {safe_category} Received:\n\n"
+            f"User ID: {validated_user_id}\n"
+            f"Category: {safe_category}\n"
+            f"Time: {datetime.utcnow()}\n\n"
+            f"Message:\n{safe_message}\n\n"
+            f"--------------------------------\n"
+            f"Sent from Pystock Bot Backend"
+        )
+        
+        send_email_background(background_tasks, subject, body)
+        
+        # Log for trace
+        logging.info(f"📧 EMAIL_QUEUED: {subject}")
         
         return {"success": True, "message": "Feedback received. We will contact you if needed."}
     except Exception as e:
