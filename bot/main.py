@@ -636,7 +636,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "⚠️ Raise Issue":
         USER_STATES[user_id] = "WAITING_FOR_ISSUE"
         await update.message.reply_text(
-            "⚠️ <b>Raise an Issue</b>\n\nPlease describe the issue you are facing:",
+            "⚠️ <b>Raise an Issue</b>\n\nPlease describe the issue you are facing.\n"
+            "<i>(Tip: Include your email address if you'd like a reply!)</i>",
             parse_mode="HTML",
             reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Back")]], resize_keyboard=True)
         )
@@ -645,7 +646,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "📝 Provide Feedback":
         USER_STATES[user_id] = "WAITING_FOR_FEEDBACK"
         await update.message.reply_text(
-            "📝 <b>Provide Feedback</b>\n\nWe'd love to hear your thoughts! Type your message below:",
+            "📝 <b>Provide Feedback</b>\n\nWe'd love to hear your thoughts!\n"
+            "<i>(Tip: Include your email address if you'd like a reply!)</i>",
             parse_mode="HTML",
              reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Back")]], resize_keyboard=True)
         )

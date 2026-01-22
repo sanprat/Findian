@@ -1,5 +1,10 @@
 from fastapi import FastAPI, HTTPException, Depends
 import logging
+import warnings
+
+# Suppress warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", message=".*Timestamp.utcnow.*")
 from pydantic import BaseModel
 import os
 from typing import Optional, Dict, Any, List
@@ -762,10 +767,13 @@ def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks,
         # Send Email in Background
         from app.core.email_utils import send_email_background
         
-        subject = f"Pystock: New {safe_category} from User {validated_user_id}"
+        user_mention = f"@{user.username}" if user and user.username else "N/A"
+        
+        subject = f"Pystock: New {safe_category} from User {validated_user_id} ({user_mention})"
         body = (
             f"New {safe_category} Received:\n\n"
             f"User ID: {validated_user_id}\n"
+            f"Username: {user_mention}\n"
             f"Category: {safe_category}\n"
             f"Time: {datetime.utcnow()}\n\n"
             f"Message:\n{safe_message}\n\n"
