@@ -781,6 +781,7 @@ def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks,
             f"Sent from Pystock Bot Backend"
         )
         
+        logging.info(f"📧 ATTEMPTING EMAIL to {user.username if user else 'Unknown'} | Category: {safe_category}")
         send_email_background(background_tasks, subject, body)
         
         # Log for trace
