@@ -715,6 +715,40 @@ class FeedbackRequest(BaseModel):
 
 from fastapi import BackgroundTasks
 
+@app.get("/api/test/email")
+def test_email_endpoint():
+    """Test email sending - DEBUG ONLY. Remove in production."""
+    import os
+    from datetime import datetime
+    
+    smtp_user = os.getenv("SMTP_USERNAME")
+    smtp_pass = os.getenv("SMTP_PASSWORD")
+    admin_email = os.getenv("ADMIN_EMAIL")
+    
+    config = {
+        "smtp_server": os.getenv("SMTP_SERVER", "NOT SET"),
+        "smtp_port": os.getenv("SMTP_PORT", "NOT SET"),
+        "smtp_username": "SET" if smtp_user else "NOT SET",
+        "smtp_password": "SET" if smtp_pass else "NOT SET",
+        "admin_email": admin_email or "NOT SET",
+    }
+    
+    if not smtp_user or not smtp_pass:
+        return {"success": False, "error": "Missing SMTP credentials", "config": config}
+    
+    try:
+        from app.core.email_utils import send_email_sync
+        
+        subject = f"Pystock Test Email - {datetime.utcnow()}"
+        body = f"This is a test email sent from Railway at {datetime.utcnow()}"
+        
+        # Call synchronously to capture errors
+        send_email_sync(subject, body, admin_email)
+        
+        return {"success": True, "message": f"Email sent to {admin_email}", "config": config}
+    except Exception as e:
+        return {"success": False, "error": str(e), "config": config}
+
 @app.post("/api/support/submit")
 def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Submit user feedback or issue."""
