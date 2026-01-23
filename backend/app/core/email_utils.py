@@ -23,15 +23,24 @@ def send_email_sync(subject: str, body: str, to_email: str = ADMIN_EMAIL):
     Synchronous function to send email via SMTP.
     Use this within a background thread/task.
     """
+    import sys
+    
+    print(f"[EMAIL DEBUG] send_email_sync called: to={to_email}, subject={subject[:50]}", flush=True)
+    
     if not SMTP_USERNAME or not SMTP_PASSWORD:
-        logger.error(f"❌ EMAIL FAILURE: Missing Credentials. User:{SMTP_USERNAME}")
+        error_msg = f"❌ EMAIL FAILURE: Missing Credentials. User:{SMTP_USERNAME}, Pass:{'SET' if SMTP_PASSWORD else 'MISSING'}"
+        print(error_msg, file=sys.stderr, flush=True)
+        logger.error(error_msg)
         return
         
     if not to_email:
-        logger.error("❌ EMAIL FAILURE: No Recipient Email (ADMIN_EMAIL not set?)")
+        error_msg = "❌ EMAIL FAILURE: No Recipient Email (ADMIN_EMAIL not set?)"
+        print(error_msg, file=sys.stderr, flush=True)
+        logger.error(error_msg)
         return
 
     try:
+        print(f"[EMAIL DEBUG] Connecting to {SMTP_SERVER}:{SMTP_PORT}...", flush=True)
         # Create Message
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
@@ -41,8 +50,9 @@ def send_email_sync(subject: str, body: str, to_email: str = ADMIN_EMAIL):
         msg.attach(MIMEText(body, "plain"))
 
         # Connect to Server
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
         server.starttls()  # Secure the connection
+        print(f"[EMAIL DEBUG] Logging in as {SMTP_USERNAME}...", flush=True)
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
         
         # Send Email
@@ -50,10 +60,16 @@ def send_email_sync(subject: str, body: str, to_email: str = ADMIN_EMAIL):
         server.sendmail(SENDER_EMAIL, to_email, text)
         server.quit()
         
-        logger.info(f"✅ Email sent to {to_email}: {subject}")
+        success_msg = f"✅ Email sent successfully to {to_email}: {subject}"
+        print(success_msg, flush=True)
+        logger.info(success_msg)
 
     except Exception as e:
-        logger.error(f"❌ Failed to send email: {e}")
+        error_msg = f"❌ Failed to send email: {type(e).__name__}: {e}"
+        print(error_msg, file=sys.stderr, flush=True)
+        logger.error(error_msg)
+        import traceback
+        traceback.print_exc()
 
 def send_email_background(background_tasks, subject: str, body: str, to_email: str = ADMIN_EMAIL):
     """
