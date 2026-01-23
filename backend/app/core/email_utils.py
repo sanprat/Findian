@@ -22,6 +22,7 @@ def send_email_sync(subject: str, body: str, to_email: str = ADMIN_EMAIL):
     """
     Synchronous function to send email via SMTP.
     Use this within a background thread/task.
+    Uses SMTP_SSL (port 465) which works better on cloud platforms.
     """
     import sys
     
@@ -40,20 +41,30 @@ def send_email_sync(subject: str, body: str, to_email: str = ADMIN_EMAIL):
         return
 
     try:
-        print(f"[EMAIL DEBUG] Connecting to {SMTP_SERVER}:{SMTP_PORT}...", flush=True)
         # Create Message
         msg = MIMEMultipart()
         msg["From"] = SENDER_EMAIL
         msg["To"] = to_email
         msg["Subject"] = subject
-
         msg.attach(MIMEText(body, "plain"))
-
-        # Connect to Server
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
-        server.starttls()  # Secure the connection
-        print(f"[EMAIL DEBUG] Logging in as {SMTP_USERNAME}...", flush=True)
+        
+        # Try SMTP_SSL on port 465 first (works better on cloud platforms)
+        print(f"[EMAIL DEBUG] Connecting via SSL to {SMTP_SERVER}:465...", flush=True)
+        
+        try:
+            import ssl
+            context = ssl.create_default_context()
+            server = smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=30, context=context)
+            print(f"[EMAIL DEBUG] SSL Connected! Logging in as {SMTP_USERNAME}...", flush=True)
+        except Exception as ssl_err:
+            # Fallback to STARTTLS on port 587
+            print(f"[EMAIL DEBUG] SSL failed ({ssl_err}), trying STARTTLS on 587...", flush=True)
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
+            server.starttls()
+            print(f"[EMAIL DEBUG] STARTTLS Connected! Logging in...", flush=True)
+        
         server.login(SMTP_USERNAME, SMTP_PASSWORD)
+        print(f"[EMAIL DEBUG] Login successful! Sending email...", flush=True)
         
         # Send Email
         text = msg.as_string()
