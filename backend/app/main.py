@@ -718,6 +718,7 @@ from fastapi import BackgroundTasks
 @app.post("/api/support/submit")
 def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Submit user feedback or issue."""
+    from datetime import datetime
     from app.core.security import validate_user_id, sanitize_string, sanitize_error_message
     
     # SECURITY: Validate user_id
