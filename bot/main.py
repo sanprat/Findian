@@ -550,7 +550,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📖 <b>Pystock Bot - Your AI Stock Companion</b>\n\n"
             "<b>🔍 Smart Screener</b>\n"
             "• Use menu buttons for Breakouts/Volume shocks.\n"
-            "• Type <i>'Show stocks with RSI < 30'</i> for AI analysis.\n\n"
+            "• Type <i>'Show stocks with RSI &lt; 30'</i> for AI analysis.\n\n"
             "<b>💼 Portfolio Manager</b>\n"
             "• Add: <i>'Bought 10 TCS at 3000'</i>\n"
             "• Sell: <i>'Sold 5 TCS at 3200'</i>\n"
