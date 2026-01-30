@@ -5,7 +5,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import yfinance as yf
-from app.core.symbol_tokens import resolve_alias
+from app.db.base import SessionLocal
+from app.core.lookup import resolve_symbol
 
 # Use Agg backend for non-interactive plotting (server-side)
 matplotlib.use("Agg")
@@ -17,7 +18,13 @@ def generate_stock_chart(symbol: str, period: str = "1mo") -> str:
     Generates a stock price & volume chart and returns it as a Base64 string.
     """
     try:
-        resolved_symbol = resolve_alias(symbol)
+        # Smart Resolve
+        db = SessionLocal()
+        try:
+             resolved_symbol = resolve_symbol(db, symbol)
+        finally:
+             db.close()
+        
         yf_symbol = f"{resolved_symbol}.NS"
         
         # Fetch Data

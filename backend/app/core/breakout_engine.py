@@ -83,6 +83,5 @@ class BreakoutEngine:
     
     def _get_symbol_from_token(self, token):
         # Helper to bridge token -> symbol
-        # Ideally, this map is also in Redis or memory
-        from app.core.symbol_tokens import get_symbol
-        return get_symbol(str(token))
+        # YFinance uses symbol directly
+        return str(token)
