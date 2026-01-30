@@ -10,7 +10,6 @@ services:
     ports:
       - "8005:8000"
     environment:
-      - DATABASE_URL=mysql+pymysql://${DB_USER}:${DB_PASSWORD}@db:3306/${DB_NAME}
       - REDIS_URL=redis://redis:6379/0
       - ZAI_API_KEY=${ZAI_API_KEY}
       - DB_USER=${DB_USER}
@@ -18,7 +17,7 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_HOST=db
       - ADMIN_IDS=${ADMIN_IDS}
-      - TESTER_ACCESS_CODE=${TESTER_ACCESS_CODE}
+      - API_SECRET_KEY=${API_SECRET_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -34,6 +33,7 @@ services:
     environment:
       - BACKEND_API_URL=http://backend:8000
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - API_SECRET_KEY=${API_SECRET_KEY}
     depends_on:
       - backend
 

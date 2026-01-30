@@ -883,86 +883,8 @@ async def startup_event():
         logger.info("🌙 Market CLOSED - Using yfinance (faster startup)")
 
     # Initialize SmartAPI only during market hours
-    def init_smartapi_background():
-        try:
-            from app.core.smart_auth import SmartApiAuth
-            from app.core.websocket_manager import WebSocketManager
-
-            logger.info("🔐 Initializing SmartAPI Authentication...")
-
-            # Read credentials from environment
-            api_key_1 = os.getenv("ANGEL_API_KEY_1")
-            client_code_1 = os.getenv("ANGEL_CLIENT_CODE_1")
-            pin_1 = os.getenv("ANGEL_PIN_1")
-            totp_secret_1 = os.getenv("ANGEL_TOTP_SECRET_1")
-
-            if not all([api_key_1, client_code_1, pin_1, totp_secret_1]):
-                logger.warning("⚠️ SmartAPI credentials not configured, skipping")
-                return
-
-            # Initialize Auth for Account 1
-            auth_1 = SmartApiAuth(api_key_1, client_code_1, pin_1, totp_secret_1)
-
-            if auth_1.login():
-                logger.info("✅ SmartAPI Account 1 authenticated")
-                tokens_1 = auth_1.get_tokens()
-
-                ws_credentials = [
-                    {
-                        "auth_token": tokens_1["jwt_token"],
-                        "api_key": tokens_1["api_key"],
-                        "client_code": tokens_1["client_code"],
-                        "feed_token": tokens_1["feed_token"],
-                    }
-                ]
-
-                # Initialize WebSocket Manager
-                ws_manager = WebSocketManager(ws_credentials)
-                app.state.ws_manager = ws_manager
-                ws_manager.start()
-
-                # Subscribe to top stocks
-                from app.core.symbol_tokens import get_all_tokens
-
-                all_tokens = get_all_tokens()
-                logger.info(f"📊 Subscribing to {len(all_tokens)} stocks...")
-                ws_manager.subscribe(all_tokens, mode=2)
-
-                # Inject SmartAPI into MarketDataService
-                if hasattr(auth_1, "smart_api") and auth_1.smart_api:
-                    market_data.set_smart_api(auth_1.smart_api)
-
-                logger.info("✅ SmartAPI WebSocket ready")
-            else:
-                logger.warning("⚠️ SmartAPI auth failed, using fallback")
-        except Exception as e:
-            logger.error(f"SmartAPI init error: {e}")
-
-    # Start SmartAPI only during market hours (skip on weekends/nights)
-    if is_market_hours:
-        threading.Thread(target=init_smartapi_background, daemon=True).start()
-
-        # Start Async Tick Consumer
-        async def consume_ticks():
-            logger.info("⏳ Waiting for WebSocket Manager...")
-            while not hasattr(app.state, "ws_manager"):
-                await asyncio.sleep(1)
-
-            logger.info("⚡ Tick Consumer Loop Started")
-            ws_manager = app.state.ws_manager
-            loop = asyncio.get_event_loop()
-
-            while True:
-                try:
-                    tick = await loop.run_in_executor(None, ws_manager.tick_queue.get)
-                    await breakout_engine.process_tick(tick)
-                except Exception as e:
-                    logger.error(f"Tick Consumer Error: {e}")
-                    await asyncio.sleep(1)
-
-        asyncio.create_task(consume_ticks())
-    else:
-        logger.info("⏭️ Skipping SmartAPI initialization (market closed)")
+    # SmartAPI Removed - Using yfinance only
+    logger.info("Using yfinance for all data fetching.")
 
     # Run Schema Migration Check (DEFER TO BACKGROUND - don't block startup)
     def init_database_background():
