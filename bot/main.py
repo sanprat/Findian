@@ -394,8 +394,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         symbol = text.upper()
-        USER_STATES.pop(user_id, None)
-        status_msg = await update.message.reply_text(f"📊 Generating chart for {symbol}...")
+        # KEEP STATE: USER_STATES.pop(user_id, None)
+        status_msg = await update.message.reply_text(f"📊 Generating chart for {symbol}...\n(Type another symbol or 'Back' to exit)")
         
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as resp:
@@ -406,12 +406,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 image_data = base64.b64decode(chart_data["image"])
                 await update.message.reply_photo(
                     photo=image_data,
-                    caption=f"📈 <b>{symbol}</b> - Price & Volume Chart",
+                    caption=f"📈 <b>{symbol}</b> - Price & Volume Chart\n\n👇 <i>Enter next symbol for Chart:</i>",
                     parse_mode="HTML"
                 )
                 await status_msg.delete()
             else:
-                await status_msg.edit_text(f"❌ Could not generate chart for {symbol}.")
+                await status_msg.edit_text(f"❌ Could not generate chart for {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
         return
 
     if current_state == "WAITING_FOR_FUNDAMENTALS_SYMBOL":
@@ -422,8 +422,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         symbol = text.upper()
-        USER_STATES.pop(user_id, None)
-        status_msg = await update.message.reply_text(f"🔄 Fetching fundamentals for {symbol}...")
+        # KEEP STATE: USER_STATES.pop(user_id, None)
+        status_msg = await update.message.reply_text(f"🔄 Fetching fundamentals for {symbol}...\n(Type another symbol or 'Back' to exit)")
         
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
@@ -467,11 +467,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Market Cap: {mc_str}\n"
                 f"Sector: {d.get('sector', 'N/A')}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
-                f"<i>Data provided by Yahoo Finance</i>"
+                f"<i>Data provided by Yahoo Finance</i>\n\n"
+                f"👇 <i>Enter next symbol for Fundamentals:</i>"
             )
             await status_msg.edit_text(msg, parse_mode="HTML")
         else:
-            await status_msg.edit_text(f"❌ Could not fetch fundamentals for {symbol}.")
+            await status_msg.edit_text(f"❌ Could not fetch fundamentals for {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
         return
 
     if current_state == "WAITING_FOR_ANALYSIS_SYMBOL":
@@ -482,8 +483,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         symbol = text.upper()
-        USER_STATES.pop(user_id, None)
-        status_msg = await update.message.reply_text(f"🔄 Analyzing {symbol}...")
+        # KEEP STATE: USER_STATES.pop(user_id, None)
+        status_msg = await update.message.reply_text(f"🔄 Analyzing {symbol}...\n(Type another symbol or 'Back' to exit)")
         
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
@@ -514,14 +515,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     image_data = base64.b64decode(chart_data["image"])
                     await update.message.reply_photo(
                         photo=image_data,
-                        caption=msg,
+                        caption=msg + "\n\n👇 <i>Enter next symbol for Analysis:</i>",
                         parse_mode="HTML"
                     )
                     await status_msg.delete()
                 else:
-                    await status_msg.edit_text(msg, parse_mode="HTML")
+                    await status_msg.edit_text(msg + "\n\n👇 <i>Enter next symbol for Analysis:</i>", parse_mode="HTML")
             else:
-                await status_msg.edit_text(f"❌ Could not analyze {symbol}.")
+                await status_msg.edit_text(f"❌ Could not analyze {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
         return
 
     # --- MENU HANDLERS ---
