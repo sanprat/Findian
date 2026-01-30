@@ -81,6 +81,15 @@ class MarketDataService:
         """
         try:
             import yfinance as yf
+            # Smart Resolve
+            from app.db.base import SessionLocal
+            from app.core.lookup import resolve_symbol
+            
+            db = SessionLocal()
+            try:
+                 symbol = resolve_symbol(db, symbol)
+            finally:
+                 db.close()
 
             yf_symbol = (
                 f"{symbol}.NS" if not symbol.endswith((".NS", ".BO")) else symbol
