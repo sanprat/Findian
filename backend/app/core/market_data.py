@@ -110,7 +110,10 @@ class MarketDataService:
         """
         try:
             import yfinance as yf
-            # Smart Resolve
+            # Smart Resolve (Includes Fuzzy Matches)
+            from app.db.base import SessionLocal
+            from app.core.lookup import resolve_symbol
+
             db = SessionLocal()
             try:
                  symbol = resolve_symbol(db, symbol)
@@ -147,7 +150,10 @@ class MarketDataService:
         try:
             import yfinance as yf
             import pandas as pd
-            # Smart Resolve
+            # Smart Resolve (Includes Fuzzy Matches)
+            from app.db.base import SessionLocal
+            from app.core.lookup import resolve_symbol
+
             db = SessionLocal()
             try:
                  symbol = resolve_symbol(db, symbol)
