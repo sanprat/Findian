@@ -993,6 +993,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
         return
 
+    # --- NEW: DIRECT STOCK SHORTCUT ---
+    # If text is short and looks like a symbol, offer tools immediately
+    clean_text = text.strip()
+    is_symbol_candidate = (
+        len(clean_text) < 15
+        and len(clean_text.split()) == 1
+        and clean_text.replace(".", "").isalnum()
+        and clean_text.lower() not in ["hi", "hello", "help", "start", "exit"]
+    )
+
+    if is_symbol_candidate:
+        potential_symbol = clean_text.upper()
+        # Offer Quick Tools
+        keyboard = [
+            [
+                InlineKeyboardButton("📈 Chart", callback_data=f"tool_chart_{potential_symbol}"),
+                InlineKeyboardButton("💎 Fundamentals", callback_data=f"tool_fund_{potential_symbol}")
+            ],
+            [
+                InlineKeyboardButton("📊 Technical Analysis", callback_data=f"tool_ta_{potential_symbol}"),
+                InlineKeyboardButton("💰 Just Price", callback_data=f"tool_price_{potential_symbol}")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        msg_text = (
+            f"🔎 <b>Is '{potential_symbol}' a stock?</b>\n\n"
+            f"Select a tool to analyze it directly:"
+        )
+        await update.message.reply_text(msg_text, reply_markup=reply_markup, parse_mode="HTML")
+        return
+
     # --- AI PROCESSING ---
     status_msg = await update.message.reply_text("🤔 Analysing...")
 
@@ -1420,6 +1451,100 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await query.message.reply_text("🗑️ Scan Deleted.")
                 else:
                     await query.answer("Delete Failed", show_alert=True)
+
+
+    elif data.startswith("tool_"):
+        # tool_chart_SYMBOL, tool_fund_SYMBOL, tool_ta_SYMBOL, tool_price_SYMBOL
+        parts = data.split("_", 2)
+        action = parts[1]
+        symbol = parts[2]
+        
+        user_id = update.effective_user.id
+        
+        if action == "chart":
+            await query.message.reply_text(f"📊 Generating chart for {symbol}...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as resp:
+                    chart_data = await resp.json()
+                
+                if chart_data.get("success"):
+                    import base64
+                    image_data = base64.b64decode(chart_data["image"])
+                    await query.message.reply_photo(
+                        photo=image_data,
+                        caption=f"📈 <b>{symbol}</b> - Price & Volume Chart",
+                        parse_mode="HTML"
+                    )
+                else:
+                    await query.message.reply_text(f"❌ Could not generate chart for {symbol}.")
+                    
+        elif action == "fund":
+            await query.message.reply_text(f"🔄 Fetching fundamentals for {symbol}...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{BACKEND_URL}/api/fundamentals/{symbol}", headers=get_api_headers()) as resp:
+                    data = await resp.json()
+            
+            if data.get("success"):
+                d = data.get("data", {})
+                pe = d.get("pe_ratio")
+                pe_str = f"{pe:.2f}" if pe else "N/A"
+                roe = d.get("roe")
+                roe_str = f"{roe * 100:.2f}%" if roe else "N/A"
+                mc = d.get("market_cap")
+                def fmt_mc(n):
+                    if not n: return "N/A"
+                    if n >= 1e7: return f"₹{n / 1e7:,.0f} Cr"
+                    return f"₹{n:,.0f}"
+                
+                msg = (
+                    f"📊 <b>{symbol} Fundamentals</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"P/E Ratio: <b>{pe_str}</b>\n"
+                    f"ROE: <b>{roe_str}</b>\n"
+                    f"P/B Ratio: {d.get('pb_ratio', 'N/A')}\n"
+                    f"Market Cap: {fmt_mc(mc)}\n"
+                    f"Sector: {d.get('sector', 'N/A')}\n"
+                    f"━━━━━━━━━━━━━━━━━━━"
+                )
+                await query.message.reply_text(msg, parse_mode="HTML")
+            else:
+                await query.message.reply_text(f"❌ Could not fetch fundamentals for {symbol}.")
+
+        elif action == "ta":
+            await query.message.reply_text(f"🔄 Analyzing {symbol}...")
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
+                    analysis = await resp.json()
+                
+                if analysis.get("success"):
+                    d = analysis["data"]
+                    trend = "🚀" if d["trend"] == "BULLISH" else "📉"
+                    msg = (
+                        f"🔍 <b>Analysis: {d['symbol']}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
+                        f"Price: <b>₹{d['price']}</b> ({d['change_percent']:+.2f}%)\n"
+                        f"Trend: <b>{d['trend']}</b> {trend}\n"
+                        f"Vol Status: {d['vol_status']}\n"
+                        f"━━━━━━━━━━━━━━━━━━━"
+                    )
+                    await query.message.reply_text(msg, parse_mode="HTML")
+                else:
+                    await query.message.reply_text(f"❌ Could not analyze {symbol}.")
+        
+        elif action == "price":
+             # Trigger price check logic
+             async with aiohttp.ClientSession() as session:
+                async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
+                    res = await resp.json()
+                    if res.get("success"):
+                        q = res["data"]
+                        msg = (
+                            f"💰 <b>{q['symbol']}</b>: ₹{q['ltp']}\n"
+                            f"Change: {q['ltp'] - q['close']:+.2f} ({ (q['ltp']-q['close'])/q['close']*100:.2f}%)"
+                        )
+                        await query.message.reply_text(msg, parse_mode="HTML")
+                    else:
+                        await query.message.reply_text("❌ Quote not found.")
 
     elif data == "p_perf":
         await query.edit_message_text("📊 Generating Performance Chart... Please wait.")
