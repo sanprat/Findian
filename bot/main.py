@@ -541,7 +541,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     res = await resp.json()
             
             if res.get("success"):
-                q = res.get("data", {})
+                q = res.get("data") or {}
+                # Ensure q is a dict
+                if not isinstance(q, dict):
+                    logger.error(f"Invalid data received for {symbol}: {q}")
+                    q = {}
+                
                 ltp = q.get("ltp", 0) or 0
                 close_price = q.get("close", 0) or ltp or 1  # Fallback to LTP or 1 to avoid div/0
                 diff = ltp - close_price
@@ -1583,7 +1588,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         res = await resp.json()
                         
                  if res.get("success"):
-                    q = res.get("data", {})
+                    q = res.get("data") or {}
+                    if not isinstance(q, dict):
+                        q = {}
+                        
                     ltp = q.get("ltp", 0) or 0
                     close_price = q.get("close", 0) or ltp or 1
                     diff = ltp - close_price
