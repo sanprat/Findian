@@ -1030,10 +1030,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # If text is short and looks like a symbol, offer tools immediately
     clean_text = text.strip()
     is_symbol_candidate = (
-        len(clean_text) < 15
-        and len(clean_text.split()) == 1
-        and clean_text.replace(".", "").isalnum()
-        and clean_text.lower() not in ["hi", "hello", "help", "start", "exit"]
+        len(clean_text) < 30
+        and len(clean_text.split()) <= 3
+        and not any(c in text for c in ["/", ">", "<", "="])
+        and clean_text.lower() not in ["hi", "hello", "help", "start", "exit", "menu", "back"]
+        and not clean_text.endswith("?")
     )
 
     if is_symbol_candidate:
@@ -1088,7 +1089,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         intent = result.get("intent")
 
         if status == "NEEDS_CLARIFICATION":
-            await status_msg.edit_text(f"❓ {result.get('question')}")
+            q_text = result.get('question') or "Could not understand request."
+            await status_msg.edit_text(f"❓ {q_text}")
 
         elif status == "REJECTED":
             await status_msg.edit_text(f"🛑 {result.get('message')}")
