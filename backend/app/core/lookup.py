@@ -14,6 +14,9 @@ SYMBOL_ALIASES = {
     "M&M": "M&M", 
     "TATAMOTORS": "TATAMOTORS",
     "LTIM": "LTIM",
+    "ASHOKLEYLAND": "ASHOKLEY",
+    "BAJFINANCE": "BAJFINANCE",
+    "HDFCBANK": "HDFCBANK",
 }
 
 def static_resolve_alias(symbol: str) -> str:
