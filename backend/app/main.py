@@ -172,12 +172,6 @@ async def get_quote(symbol: str):
     """Fetches live quote for a symbol."""
     # Input Validation
     from app.core.security import validate_symbol
-
-@app.get("/api/quote/{symbol}")
-async def get_quote(symbol: str):
-    """Fetches live quote for a symbol."""
-    # Input Validation
-    from app.core.security import validate_symbol
     
     # Sanitize: Remove spaces (TATA STEEL -> TATASTEEL)
     clean_symbol = symbol.upper().replace(" ", "")

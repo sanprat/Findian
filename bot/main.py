@@ -526,9 +526,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if current_state == "WAITING_FOR_PRICE_SYMBOL":
-        if text.lower() in ["back", "cancel", "exit", "main menu"]:
+        # Allow exiting with menu keywords
+        exit_keywords = ["back", "cancel", "exit", "main menu", "menu", "chart", "fundamentals", "technical analysis", "price"]
+        if text.lower() in exit_keywords:
             USER_STATES.pop(user_id, None)
-            await update.message.reply_text("❌ Cancelled.")
+            await update.message.reply_text("✅ Exited Price Check.")
             await start(update, context)
             return
 
