@@ -540,7 +540,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
                     res = await resp.json()
             
-            if res.get("success"):
+            if res and res.get("success"):
                 q = res.get("data") or {}
                 # Ensure q is a dict
                 if not isinstance(q, dict):
@@ -1587,7 +1587,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
                         res = await resp.json()
                         
-                 if res.get("success"):
+                 if res and res.get("success"):
                     q = res.get("data") or {}
                     if not isinstance(q, dict):
                         q = {}
