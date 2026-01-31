@@ -535,26 +535,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         symbol = text.upper()
         status_msg = await update.message.reply_text(f"💰 Checking price for {symbol}...\n(Type another symbol or 'Back' to exit)")
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
-                res = await resp.json()
-        
-        if res.get("success"):
-            q = res["data"]
-            close_price = q.get("close", 0) or q.get("ltp", 1)  # Avoid div/0
-            diff = q["ltp"] - close_price
-            pct = (diff / close_price) * 100
-            emoji = "🚀" if diff >= 0 else "🔻"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
+                    res = await resp.json()
             
-            msg = (
-                f"{emoji} <b>{q['symbol']}</b>: ₹{q['ltp']:,.2f}\n"
-                f"Change: {diff:+.2f} ({pct:+.2f}%)\n"
-                f"Vol: {q.get('volume', 0):,}\n\n"
-                f"👇 <i>Enter next symbol for Price:</i>"
-            )
-            await status_msg.edit_text(msg, parse_mode="HTML")
-        else:
-            await status_msg.edit_text(f"❌ Quote not found for {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
+            if res.get("success"):
+                q = res.get("data", {})
+                ltp = q.get("ltp", 0) or 0
+                close_price = q.get("close", 0) or ltp or 1  # Fallback to LTP or 1 to avoid div/0
+                diff = ltp - close_price
+                pct = (diff / close_price) * 100
+                emoji = "🚀" if diff >= 0 else "🔻"
+                volume = q.get("volume", 0) or 0
+                
+                msg = (
+                    f"{emoji} <b>{q.get('symbol', symbol)}</b>: ₹{ltp:,.2f}\n"
+                    f"Change: {diff:+.2f} ({pct:+.2f}%)\n"
+                    f"Vol: {volume:,}\n\n"
+                    f"👇 <i>Enter next symbol for Price:</i>"
+                )
+                await status_msg.edit_text(msg, parse_mode="HTML")
+            else:
+                await status_msg.edit_text(f"❌ Quote not found for {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Price Check Error: {e}")
+            await status_msg.edit_text(f"❌ Error fetching price for {symbol}.\n👇 <i>Try another symbol:</i>")
         return
 
     # --- MENU HANDLERS ---
@@ -1571,26 +1577,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
              USER_STATES[user_id] = "WAITING_FOR_PRICE_SYMBOL"
              await query.message.reply_text(f"💰 Checking price for {symbol}...\n(Type another symbol or 'Back' to exit)")
              
-             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
-                    res = await resp.json()
-                    
-                if res.get("success"):
-                    q = res["data"]
-                    close_price = q.get("close", 0) or q.get("ltp", 1)
-                    diff = q["ltp"] - close_price
+             try:
+                 async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
+                        res = await resp.json()
+                        
+                 if res.get("success"):
+                    q = res.get("data", {})
+                    ltp = q.get("ltp", 0) or 0
+                    close_price = q.get("close", 0) or ltp or 1
+                    diff = ltp - close_price
                     pct = (diff / close_price) * 100
                     emoji = "🚀" if diff >= 0 else "🔻"
+                    volume = q.get("volume", 0) or 0
                     
                     msg = (
-                        f"{emoji} <b>{q['symbol']}</b>: ₹{q['ltp']:,.2f}\n"
+                        f"{emoji} <b>{q.get('symbol', symbol)}</b>: ₹{ltp:,.2f}\n"
                         f"Change: {diff:+.2f} ({pct:+.2f}%)\n"
-                        f"Vol: {q.get('volume', 0):,}\n\n"
+                        f"Vol: {volume:,}\n\n"
                         f"👇 <i>Enter next symbol for Price:</i>"
                     )
                     await query.message.reply_text(msg, parse_mode="HTML")
-                else:
+                 else:
                     await query.message.reply_text(f"❌ Quote not found.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
+             except Exception as e:
+                logger.error(f"Price Button Error: {e}")
+                await query.message.reply_text(f"❌ Error fetching price.")
 
     elif data == "p_perf":
         await query.edit_message_text("📊 Generating Performance Chart... Please wait.")
