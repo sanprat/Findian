@@ -2,11 +2,11 @@ fastapi==0.109.2
 uvicorn==0.27.1
 httpx==0.27.0
 slowapi==0.1.9
-requests==2.31.0
+requests==2.32.4
 websocket-client==1.7.0
 sqlalchemy==2.0.27
-pymysql==1.1.0
-cryptography==41.0.7
+pymysql==1.1.1
+cryptography==44.0.1
 asyncpg==0.29.0
 python-dateutil==2.8.2
 python-dotenv==1.0.0
@@ -21,8 +21,8 @@ logzero==1.7.0
 pytz==2024.1
 matplotlib==3.8.3
 thefuzz[speedup]==0.22.1
-jinja2==3.1.3
+jinja2==3.1.6
 pydantic==2.6.1
 pydantic-settings==2.1.0
-python-multipart==0.0.9
+python-multipart==0.0.22
 email-validator==2.1.0.post1
