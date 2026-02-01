@@ -1,4 +1,8 @@
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")  # Load from root .env
+
 import logging
 import aiohttp
 import html  # SECURITY: For escaping user input in HTML output
