@@ -43,6 +43,33 @@ This codebase includes:
 - ✅ Timing-safe comparisons
 - ✅ Error message sanitization
 
+## Environment & Secret Protection
+
+The following measures protect sensitive environment variables from unauthorized access:
+
+### File System Protection
+- ✅ `.env` file has restrictive permissions (`chmod 600` - owner read/write only)
+- ✅ Pre-commit hook prevents accidental commits of sensitive files
+- ✅ `.gitignore` excludes `.env` and all secret files
+
+### AI Agent Protection
+- ✅ `.opencodeignore` file prevents AI agents (OpenCode, Claude Code, etc.) from reading:
+  - `.env` files
+  - Key and certificate files (`*.key`, `*.pem`, `*.crt`)
+  - Secrets directories
+  - VSCode settings (may contain API keys)
+  - Log files and databases
+
+### Usage
+```bash
+# Use the secure launcher
+./run_secure.sh backend    # Start backend
+./run_secure.sh bot        # Start Telegram bot
+
+# Or run manually with environment checks
+cd backend && uvicorn app.main:app --reload
+```
+
 ## Acknowledgments
 
-Security review completed January 2026.
+Security review completed February 2026.

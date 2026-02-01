@@ -162,7 +162,8 @@ def apply_guru_filter(stock_data: dict, guru: str) -> bool:
                     roe > 15 and             # High ROE
                     de < 50                   # Low debt
                 )
-    except:
+    except Exception as e:
+        logger.warning(f"Guru filter error: {e}")
         pass
     
     return False

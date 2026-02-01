@@ -134,7 +134,9 @@ class MarketScannerService:
                                 if isinstance(df.columns, pd.MultiIndex):
                                     df.columns = df.columns.droplevel(1)
                                 history_map[sym] = df
-                        except: pass
+                        except Exception as e:
+                            logger.debug(f"History parse error for {sym}: {e}")
+                            pass
                 except Exception as e:
                     logger.warning(f"Batch History Fetch Failed: {e}")
 
@@ -245,6 +247,7 @@ class MarketScannerService:
                                                  rsi_val = float(val)
                              except Exception as e:
                                  # logger.warning(f"RSI Calc Error {sym}: {e}")
+                                 logger.debug(f"RSI Calc Error {sym}: {e}")
                                  pass
                         
                         data_to_store["rsi"] = round(rsi_val, 2)

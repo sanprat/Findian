@@ -3,7 +3,7 @@ import os
 
 # Configuration
 BACKEND_URL = "http://localhost:8000"
-API_KEY = "dummy_secret" # Assuming dev/test key where needed or relying on no-auth for local if configured so. 
+API_KEY = os.getenv("API_SECRET_KEY", "test_secret") # Use env or default for local test 
 # Wait, backend requires X-API-Key. I need to find the key or temporarily mock it or Assume running locally implies I can access env.
 # In the `main.py` I saw `API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")` and defaults empty?
 # If empty, `APIKeyAuthMiddleware` fails: "SECURITY: API_SECRET_KEY not configured - rejecting request"

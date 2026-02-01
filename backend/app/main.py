@@ -400,6 +400,7 @@ async def custom_screen(
                     }
                 )
         except Exception as e:
+            logging.debug(f"Screen match error: {e}")
             continue
 
     return {
@@ -528,7 +529,8 @@ async def prebuilt_screen(scan_type: str):
                 }
                 results.append(cleaned_item)
 
-        except:
+        except Exception as e:
+            logging.debug(f"Prebuilt screen error: {e}")
             continue
 
     # Sort results
@@ -588,7 +590,8 @@ async def guru_screen(guru: str):
                         "timestamp": item.get("timestamp", "Today"),
                     }
                 )
-        except:
+        except Exception as e:
+            logging.debug(f"Guru screen error: {e}")
             continue
 
     # Sort by best matches
@@ -1710,7 +1713,7 @@ def get_portfolio_performance(user_id: int, db: Session = Depends(get_db)):
                         value = float(price) * qty
                         daily_totals[date_str] = daily_totals.get(date_str, 0.0) + value
             except Exception as e:
-                # print(f"Error processing history for {sym}: {e}")
+                logging.debug(f"Error processing history for {sym}: {e}")
                 pass
 
         # 4. Format for Chart
