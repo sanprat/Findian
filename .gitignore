@@ -4,6 +4,9 @@
 memory_report*.md
 agent_session*.log
 
+# Security configuration files (contain exclusion rules but not actual secrets)
+.opencodeignore
+
 # Claude Code configuration
 .claude/
 
