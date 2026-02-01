@@ -744,7 +744,8 @@ def test_email_endpoint():
         
         return {"success": True, "message": f"Email sent to {admin_email}", "config": config}
     except Exception as e:
-        return {"success": False, "error": str(e), "config": config}
+        from app.core.security import sanitize_error_message
+        return {"success": False, "error": sanitize_error_message(e), "config": config}
 
 @app.post("/api/support/submit")
 def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):

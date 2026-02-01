@@ -387,7 +387,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- STOCK TOOLS STATE HANDLERS ---
     if current_state == "WAITING_FOR_CHART_SYMBOL":
-        if text.lower() in ["back", "cancel", "exit", "main menu"]:
+        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]:
             USER_STATES.pop(user_id, None)
             await update.message.reply_text("❌ Cancelled.")
             await start(update, context)
@@ -415,7 +415,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if current_state == "WAITING_FOR_FUNDAMENTALS_SYMBOL":
-        if text.lower() in ["back", "cancel", "exit", "main menu"]:
+        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]:
             USER_STATES.pop(user_id, None)
             await update.message.reply_text("❌ Cancelled.")
             await start(update, context)
@@ -476,7 +476,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if current_state == "WAITING_FOR_ANALYSIS_SYMBOL":
-        if text.lower() in ["back", "cancel", "exit", "main menu"]:
+        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]:
             USER_STATES.pop(user_id, None)
             await update.message.reply_text("❌ Cancelled.")
             await start(update, context)
@@ -527,7 +527,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if current_state == "WAITING_FOR_PRICE_SYMBOL":
         # Allow exiting with menu keywords
-        exit_keywords = ["back", "cancel", "exit", "main menu", "menu", "chart", "fundamentals", "technical analysis", "price"]
+        exit_keywords = ["back", "cancel", "exit", "main menu", "🏠 main menu", "menu", "chart", "fundamentals", "technical analysis", "price"]
         if text.lower() in exit_keywords:
             USER_STATES.pop(user_id, None)
             await update.message.reply_text("✅ Exited Price Check.")

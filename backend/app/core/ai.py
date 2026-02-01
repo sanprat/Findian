@@ -37,7 +37,7 @@ class AIAlertInterpreter:
             
             # Check if key is valid
             if not apikey or "." not in apikey:
-                logger.error(f"Invalid ZAI_API_KEY format. Expected 'id.secret', got: {apikey[:5]}...")
+                logger.error("Invalid ZAI_API_KEY format. Expected 'id.secret' format")
                 return None
 
             id, secret = apikey.split(".")
