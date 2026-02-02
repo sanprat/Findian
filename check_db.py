@@ -1,5 +1,7 @@
 
 import asyncio
+from dotenv import load_dotenv
+load_dotenv()
 from app.db.base import SessionLocal
 from app.db.models import User
 

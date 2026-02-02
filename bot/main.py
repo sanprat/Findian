@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-BACKEND_URL = os.getenv("BACKEND_API_URL", "http://backend:8000")
+BACKEND_URL = os.getenv("BACKEND_API_URL", "http://localhost:8000")
 API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")
 
 
