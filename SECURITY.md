@@ -49,7 +49,7 @@ The following measures protect sensitive environment variables from unauthorized
 
 ### File System Protection
 - ✅ `.env` file has restrictive permissions (`chmod 600` - owner read/write only)
-- ✅ Pre-commit hook prevents accidental commits of sensitive files
+- ✅ Pre-commit secret scanning config is included (install to enforce before commits)
 - ✅ `.gitignore` excludes `.env` and all secret files
 
 ### AI Agent Protection
@@ -62,6 +62,12 @@ The following measures protect sensitive environment variables from unauthorized
 
 ### Usage
 ```bash
+# Install pre-commit hooks (recommended)
+pre-commit install
+
+# Run secret scan manually
+pre-commit run --all-files
+
 # Use the secure launcher
 ./run_secure.sh backend    # Start backend
 ./run_secure.sh bot        # Start Telegram bot

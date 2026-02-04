@@ -127,3 +127,20 @@ Usage notes:
 <!-- SKILLS_TABLE_END -->
 
 </skills_system>
+
+<security_checks>
+
+Before any commit or push, run the repo secret scan:
+- `pre-commit run --all-files`
+
+Ensure `.env` stays gitignored and never added to git.
+
+</security_checks>
+
+<security_setup>
+
+Install the pre-commit hooks once per machine:
+- `pip install pre-commit`
+- `pre-commit install`
+
+</security_setup>

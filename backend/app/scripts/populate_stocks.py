@@ -23,10 +23,15 @@ NSE_EQUITY_URL = "https://archives.nseindia.com/content/equities/EQUITY_L.csv"
 
 def get_db_session():
     # Load DB Config from Environment
-    user = os.getenv("DB_USER", "user")
-    password = os.getenv("DB_PASSWORD", "password")
-    host = os.getenv("DB_HOST", "localhost")
-    db_name = os.getenv("DB_NAME", "pystock")
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    host = os.getenv("DB_HOST")
+    db_name = os.getenv("DB_NAME")
+
+    if not all([user, password, host, db_name]):
+        raise ValueError(
+            "Missing database configuration. Set DB_USER, DB_PASSWORD, DB_HOST, and DB_NAME."
+        )
     
     # Construct URL (MySQL)
     encoded_password = urllib.parse.quote_plus(password)

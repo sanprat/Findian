@@ -66,3 +66,31 @@ The enhanced AI interpreter will now more accurately classify user queries like:
 - Consider integrating these tests into CI/CD pipeline
 - Monitor AI accuracy in production with the new examples
 - Add more examples as new use cases emerge
+
+---
+
+# Security Updates - Summary of Changes (February 4, 2026)
+
+## Overview
+Strengthened secret handling and commit-time checks to reduce the risk of credential leaks.
+
+## Changes Made
+- Removed hardcoded DB credential defaults from backend scripts; scripts now fail fast if DB env vars are missing.
+- Added pre-commit secret scanning configuration.
+- Documented pre-commit usage and `.env` handling in `README.md`, `SECURITY.md`, and `AGENTS.md`.
+
+## How to Verify
+```bash
+pre-commit run --all-files
+```
+
+## Files Modified
+- `backend/app/scripts/fetch_daily_data.py`
+- `backend/app/scripts/fetch_stock_data.py`
+- `backend/app/scripts/fetch_nse_stocks.py`
+- `backend/app/scripts/setup_stock_tables.py`
+- `backend/app/scripts/populate_stocks.py`
+- `.pre-commit-config.yaml`
+- `README.md`
+- `SECURITY.md`
+- `AGENTS.md`

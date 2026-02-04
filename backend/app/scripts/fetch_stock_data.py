@@ -23,10 +23,15 @@ MAX_WORKERS = 5  # Parallel downloads
 sys.path.append(os.path.dirname(__file__) + "/../..")
 
 def get_db_session():
-    user = os.getenv("DB_USER", "sanprat")
-    password = os.getenv("DB_PASSWORD", "LetsLearn@2025")
-    host = os.getenv("DB_HOST", "localhost")
-    db_name = os.getenv("DB_NAME", "pystock")
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    host = os.getenv("DB_HOST")
+    db_name = os.getenv("DB_NAME")
+
+    if not all([user, password, host, db_name]):
+        raise ValueError(
+            "Missing database configuration. Set DB_USER, DB_PASSWORD, DB_HOST, and DB_NAME."
+        )
 
     encoded_password = urllib.parse.quote_plus(password)
     database_url = f"mysql+pymysql://{user}:{encoded_password}@{host}:3306/{db_name}"

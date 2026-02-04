@@ -103,6 +103,16 @@ A conversational fintech platform that allows users to interact with the stock m
    - "Alert me when TCS crosses 3500" - Set price alert
    - "Show me stocks with RSI < 30" - AI screener
 
+## 🔐 Security Checks
+
+Before committing or pushing, run the repo secret scan:
+
+```bash
+pre-commit run --all-files
+```
+
+`.env` must remain gitignored and never be committed.
+
 ## 📋 Agent Memory System
 
 Findian includes an innovative **Agent Memory System** that enables AI agents to:
