@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).parent.parent.parent / ".env")  # Load from root .env
 
 from fastapi import FastAPI, HTTPException, Depends
@@ -13,6 +14,7 @@ warnings.filterwarnings("ignore", message=".*Timestamp.utcnow.*")
 from pydantic import BaseModel
 import os
 from typing import Optional, Dict, Any, List
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 # Core Modules
@@ -177,7 +179,7 @@ async def get_quote(symbol: str):
     """Fetches live quote for a symbol."""
     # Input Validation
     from app.core.security import validate_symbol
-    
+
     # Sanitize: Remove spaces (TATA STEEL -> TATASTEEL)
     clean_symbol = symbol.upper().replace(" ", "")
 
@@ -188,6 +190,200 @@ async def get_quote(symbol: str):
     if quote:
         return {"success": True, "data": quote}
     return {"success": False, "message": "Symbol not found or Market Data error."}
+
+
+@app.get("/api/sql/quote/{symbol}")
+async def sql_get_quote(symbol: str, db: Session = Depends(get_db)):
+    """Fetches quote from SQL database (fast, no yfinance call)."""
+    from app.core.security import validate_symbol
+
+    clean_symbol = symbol.upper().replace(" ", "")
+    if not validate_symbol(clean_symbol):
+        raise HTTPException(status_code=400, detail="Invalid symbol format")
+
+    # Get latest data from stock_daily table
+    result = db.execute(
+        text("""
+            SELECT symbol, ltp, change_pct, volume, open, high, low, close, date
+            FROM stock_daily
+            WHERE symbol = :symbol
+            ORDER BY date DESC
+            LIMIT 1
+        """),
+        {"symbol": clean_symbol},
+    ).fetchone()
+
+    if result:
+        return {
+            "success": True,
+            "data": {
+                "symbol": result[0],
+                "ltp": float(result[1]) if result[1] else 0,
+                "change_pct": float(result[2]) if result[2] else 0,
+                "volume": int(result[3]) if result[3] else 0,
+                "open": float(result[4]) if result[4] else 0,
+                "high": float(result[5]) if result[5] else 0,
+                "low": float(result[6]) if result[6] else 0,
+                "close": float(result[7]) if result[7] else 0,
+                "date": str(result[8]),
+            },
+        }
+    return {"success": False, "message": "Symbol not found in database."}
+
+
+@app.get("/api/sql/fundamentals/{symbol}")
+async def sql_get_fundamentals(symbol: str, db: Session = Depends(get_db)):
+    """Fetches fundamentals from SQL database."""
+    from app.core.security import validate_symbol
+
+    clean_symbol = symbol.upper().replace(" ", "")
+    if not validate_symbol(clean_symbol):
+        raise HTTPException(status_code=400, detail="Invalid symbol format")
+
+    # Get company name from stocks table
+    stock_info = db.execute(
+        text("SELECT symbol, name FROM stocks_nse WHERE symbol = :symbol"),
+        {"symbol": clean_symbol},
+    ).fetchone()
+
+    # Get fundamentals from stock_fundamentals table
+    result = db.execute(
+        text("""
+            SELECT pe_ratio, pb_ratio, roe, debt_to_equity, dividend_yield,
+                   market_cap, eps, book_value, sector, industry,
+                   high_52w, low_52w, avg_volume_20
+            FROM stock_fundamentals
+            WHERE symbol = :symbol
+            LIMIT 1
+        """),
+        {"symbol": clean_symbol},
+    ).fetchone()
+
+    if result or stock_info:
+        data = {
+            "symbol": clean_symbol,
+            "name": stock_info[1] if stock_info else clean_symbol,
+        }
+        if result:
+            data.update(
+                {
+                    "pe_ratio": float(result[0]) if result[0] else None,
+                    "pb_ratio": float(result[1]) if result[1] else None,
+                    "roe": float(result[2]) if result[2] else None,
+                    "debt_to_equity": float(result[3]) if result[3] else None,
+                    "dividend_yield": float(result[4]) if result[4] else None,
+                    "market_cap": int(result[5]) if result[5] else None,
+                    "eps": float(result[6]) if result[6] else None,
+                    "book_value": float(result[7]) if result[7] else None,
+                    "sector": result[8],
+                    "industry": result[9],
+                    "high_52w": float(result[10]) if result[10] else None,
+                    "low_52w": float(result[11]) if result[11] else None,
+                    "avg_volume": int(result[12]) if result[12] else None,
+                }
+            )
+        return {"success": True, "data": data}
+    return {"success": False, "message": "Fundamentals not found."}
+
+
+@app.get("/api/sql/stock/{symbol}")
+async def sql_get_stock(symbol: str, db: Session = Depends(get_db)):
+    """Fetches complete stock info (price + fundamentals) from SQL database."""
+    from app.core.security import validate_symbol
+
+    clean_symbol = symbol.upper().replace(" ", "")
+    if not validate_symbol(clean_symbol):
+        raise HTTPException(status_code=400, detail="Invalid symbol format")
+
+    # Get latest price data
+    price_result = db.execute(
+        text("""
+            SELECT symbol, ltp, change_pct, volume, open, high, low, close, date
+            FROM stock_daily
+            WHERE symbol = :symbol
+            ORDER BY date DESC
+            LIMIT 1
+        """),
+        {"symbol": clean_symbol},
+    ).fetchone()
+
+    # Get company name
+    stock_info = db.execute(
+        text("SELECT symbol, name FROM stocks_nse WHERE symbol = :symbol"),
+        {"symbol": clean_symbol},
+    ).fetchone()
+
+    # Get fundamentals
+    fund_result = db.execute(
+        text("""
+            SELECT pe_ratio, pb_ratio, roe, debt_to_equity, dividend_yield,
+                   market_cap, eps, book_value, sector, industry,
+                   high_52w, low_52w, avg_volume_20, rsi_14
+            FROM stock_fundamentals
+            WHERE symbol = :symbol
+            LIMIT 1
+        """),
+        {"symbol": clean_symbol},
+    ).fetchone()
+
+    if not price_result:
+        return {
+            "success": False,
+            "message": f"Stock {clean_symbol} not found in database.",
+        }
+
+    # Build response
+    data = {
+        "symbol": clean_symbol,
+        "name": stock_info[1] if stock_info else clean_symbol,
+        "price": {
+            "ltp": float(price_result[1]) if price_result[1] else 0,
+            "change_pct": float(price_result[2]) if price_result[2] else 0,
+            "volume": int(price_result[3]) if price_result[3] else 0,
+            "open": float(price_result[4]) if price_result[4] else 0,
+            "high": float(price_result[5]) if price_result[5] else 0,
+            "low": float(price_result[6]) if price_result[6] else 0,
+            "close": float(price_result[7]) if price_result[7] else 0,
+            "date": str(price_result[8]) if price_result[8] else None,
+        },
+        "fundamentals": {},
+    }
+
+    if fund_result:
+        data["fundamentals"] = {
+            "pe_ratio": float(fund_result[0]) if fund_result[0] else None,
+            "pb_ratio": float(fund_result[1]) if fund_result[1] else None,
+            "roe": float(fund_result[2]) if fund_result[2] else None,
+            "debt_to_equity": float(fund_result[3]) if fund_result[3] else None,
+            "dividend_yield": float(fund_result[4]) if fund_result[4] else None,
+            "market_cap": int(fund_result[5]) if fund_result[5] else None,
+            "eps": float(fund_result[6]) if fund_result[6] else None,
+            "book_value": float(fund_result[7]) if fund_result[7] else None,
+            "sector": fund_result[8],
+            "industry": fund_result[9],
+            "high_52w": float(fund_result[10]) if fund_result[10] else None,
+            "low_52w": float(fund_result[11]) if fund_result[11] else None,
+            "avg_volume": int(fund_result[12]) if fund_result[12] else None,
+            "rsi_14": float(fund_result[13]) if fund_result[13] else None,
+        }
+
+    return {"success": True, "data": data}
+
+
+@app.get("/api/sql/search")
+async def sql_search_stocks(q: str, db: Session = Depends(get_db)):
+    """Search stocks by symbol or name from SQL database."""
+    search_term = f"%{q.upper()}%"
+    results = db.execute(
+        text("""
+            SELECT symbol, name FROM stocks_nse
+            WHERE (symbol LIKE :search OR name LIKE :search) AND is_active = TRUE
+            LIMIT 20
+        """),
+        {"search": search_term},
+    ).fetchall()
+
+    return {"success": True, "data": [{"symbol": r[0], "name": r[1]} for r in results]}
 
 
 class UserRegisterRequest(BaseModel):
@@ -328,7 +524,10 @@ async def custom_screen(
     parsed = await ai.parse_screener_query(user_query)
 
     if "error" in parsed:
-        error_message = parsed.get("message", "Could not understand query. Please try: 'Stocks with high volume and RSI below 30'")
+        error_message = parsed.get(
+            "message",
+            "Could not understand query. Please try: 'Stocks with high volume and RSI below 30'",
+        )
         return {"success": False, "message": error_message}
 
     filters = parsed.get("filters", [])
@@ -355,6 +554,7 @@ async def custom_screen(
                 try:
                     f = float(val)
                     import math
+
                     if math.isnan(f) or math.isinf(f):
                         return 0.0
                     return f
@@ -502,7 +702,7 @@ async def prebuilt_screen(scan_type: str):
             else:
                 rsi = float(rsi_val)
                 # Handle actual infinity float values
-                if rsi == float('inf') or rsi == float('-inf'):
+                if rsi == float("inf") or rsi == float("-inf"):
                     rsi = 50.0
 
             match = False
@@ -717,16 +917,17 @@ class FeedbackRequest(BaseModel):
 
 from fastapi import BackgroundTasks
 
+
 @app.get("/api/test/email")
 def test_email_endpoint():
     """Test email sending - DEBUG ONLY. Remove in production."""
     import os
     from datetime import datetime
-    
+
     smtp_user = os.getenv("SMTP_USERNAME")
     smtp_pass = os.getenv("SMTP_PASSWORD")
     admin_email = os.getenv("ADMIN_EMAIL")
-    
+
     config = {
         "smtp_server": os.getenv("SMTP_SERVER", "NOT SET"),
         "smtp_port": os.getenv("SMTP_PORT", "NOT SET"),
@@ -734,30 +935,44 @@ def test_email_endpoint():
         "smtp_password": "SET" if smtp_pass else "NOT SET",
         "admin_email": admin_email or "NOT SET",
     }
-    
+
     if not smtp_user or not smtp_pass:
         return {"success": False, "error": "Missing SMTP credentials", "config": config}
-    
+
     try:
         from app.core.email_utils import send_email_sync
-        
+
         subject = f"Pystock Test Email - {datetime.utcnow()}"
         body = f"This is a test email sent from Railway at {datetime.utcnow()}"
-        
+
         # Call synchronously to capture errors
         send_email_sync(subject, body, admin_email)
-        
-        return {"success": True, "message": f"Email sent to {admin_email}", "config": config}
+
+        return {
+            "success": True,
+            "message": f"Email sent to {admin_email}",
+            "config": config,
+        }
     except Exception as e:
         from app.core.security import sanitize_error_message
+
         return {"success": False, "error": sanitize_error_message(e), "config": config}
 
+
 @app.post("/api/support/submit")
-def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def submit_feedback(
+    payload: FeedbackRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Submit user feedback or issue."""
     from datetime import datetime
-    from app.core.security import validate_user_id, sanitize_string, sanitize_error_message
-    
+    from app.core.security import (
+        validate_user_id,
+        sanitize_string,
+        sanitize_error_message,
+    )
+
     # SECURITY: Validate user_id
     is_valid, validated_user_id = validate_user_id(payload.user_id)
     if not is_valid:
@@ -775,38 +990,39 @@ def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks,
 
     try:
         from app.db.models import UserFeedback, User
-        
+
         # Resolve Telegram ID to Internal User ID
         # validated_user_id is the Telegram ID (BigInt)
         user = db.query(User).filter(User.telegram_id == validated_user_id).first()
-        
+
         internal_user_id = user.id if user else None
-        
+
         # If user not found, we can still save it with NULL user_id or handle gracefully
-        # Since user_id is FK and nullable is False (by default without nullable=True), 
+        # Since user_id is FK and nullable is False (by default without nullable=True),
         # we might need a fallback. But likely user exists if they are using the bot.
         # If user doesn't exist, we can't save to this table if FK is strict.
-        
+
         if not user:
-             # Log warning and maybe return error, or proceed if nullable.
-             logging.warning(f"Feedback submitted by unknown user: {validated_user_id}")
-             # For now, let's assume strict FK and fail if user not found, as bot user should exist.
-             return {"success": False, "message": "User not registered. Please /start first."}
+            # Log warning and maybe return error, or proceed if nullable.
+            logging.warning(f"Feedback submitted by unknown user: {validated_user_id}")
+            # For now, let's assume strict FK and fail if user not found, as bot user should exist.
+            return {
+                "success": False,
+                "message": "User not registered. Please /start first.",
+            }
 
         feedback = UserFeedback(
-            user_id=internal_user_id,
-            category=safe_category,
-            message=safe_message
+            user_id=internal_user_id, category=safe_category, message=safe_message
         )
         db.add(feedback)
         db.commit()
-        
+
         # Log for email routing (simulated)
         # Send Email in Background
         from app.core.email_utils import send_email_background
-        
+
         user_mention = f"@{user.username}" if user and user.username else "N/A"
-        
+
         subject = f"Pystock: New {safe_category} from User {validated_user_id} ({user_mention})"
         body = (
             f"New {safe_category} Received:\n\n"
@@ -818,14 +1034,19 @@ def submit_feedback(payload: FeedbackRequest, background_tasks: BackgroundTasks,
             f"--------------------------------\n"
             f"Sent from Pystock Bot Backend"
         )
-        
-        logging.info(f"📧 ATTEMPTING EMAIL to {user.username if user else 'Unknown'} | Category: {safe_category}")
+
+        logging.info(
+            f"📧 ATTEMPTING EMAIL to {user.username if user else 'Unknown'} | Category: {safe_category}"
+        )
         send_email_background(background_tasks, subject, body)
-        
+
         # Log for trace
         logging.info(f"📧 EMAIL_QUEUED: {subject}")
-        
-        return {"success": True, "message": "Feedback received. We will contact you if needed."}
+
+        return {
+            "success": True,
+            "message": "Feedback received. We will contact you if needed.",
+        }
     except Exception as e:
         logging.error(f"Feedback error: {type(e).__name__}")
         return {"success": False, "message": sanitize_error_message(e)}
@@ -1073,6 +1294,90 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                     "success": False,
                     "status": "ERROR",
                     "message": "Database error. Please try again.",
+                }
+
+        # --- HANDLE VIEW ALERTS ---
+        elif intent == "VIEW_ALERTS":
+            try:
+                alerts = (
+                    db.query(Alert).filter(Alert.user_id == validated_user_id).all()
+                )
+                if not alerts:
+                    return {
+                        "success": True,
+                        "status": "VIEW_ALERTS",
+                        "message": "📭 You have no alerts set up.",
+                        "alerts": [],
+                    }
+
+                alert_list = []
+                for alert in alerts:
+                    alert_list.append(
+                        {
+                            "id": alert.id,
+                            "symbol": alert.symbol,
+                            "indicator": alert.indicator,
+                            "operator": alert.operator,
+                            "threshold": alert.threshold,
+                            "status": alert.status,
+                            "created_at": alert.created_at.isoformat()
+                            if alert.created_at
+                            else None,
+                        }
+                    )
+
+                return {
+                    "success": True,
+                    "status": "VIEW_ALERTS",
+                    "message": f"📋 You have {len(alerts)} alert(s)",
+                    "alerts": alert_list,
+                }
+            except Exception as e:
+                logging.error(f"View alerts error: {type(e).__name__}")
+                return {
+                    "success": False,
+                    "status": "ERROR",
+                    "message": "Could not fetch alerts. Please try again.",
+                }
+
+        # --- HANDLE DELETE ALERT ---
+        elif intent == "DELETE_ALERT":
+            try:
+                alert_id = result.get("data", {}).get("alert_id")
+                if not alert_id:
+                    return {
+                        "success": False,
+                        "status": "ERROR",
+                        "message": "No alert ID provided.",
+                    }
+
+                alert = (
+                    db.query(Alert)
+                    .filter(Alert.id == alert_id, Alert.user_id == validated_user_id)
+                    .first()
+                )
+
+                if not alert:
+                    return {
+                        "success": False,
+                        "status": "ERROR",
+                        "message": "Alert not found or you don't have permission to delete it.",
+                    }
+
+                db.delete(alert)
+                db.commit()
+
+                return {
+                    "success": True,
+                    "status": "ALERT_DELETED",
+                    "message": f"🗑️ Alert for {alert.symbol} deleted successfully!",
+                }
+            except Exception as e:
+                logging.error(f"Delete alert error: {type(e).__name__}")
+                return {
+                    "success": False,
+                    "status": "ERROR",
+                    "message": "Could not delete alert. Please try again.",
                 }
 
         # --- HANDLE PORTFOLIO ADD ---
@@ -1388,9 +1693,8 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
                     "success": True,
                     "status": "ANALYZE_STOCK",
                     "symbol": symbol,
-                    "data": result.get("data")
+                    "data": result.get("data"),
                 }
-
 
     if result.get("status") == "MARKET_INFO":
         return {
@@ -1413,16 +1717,97 @@ async def create_alert(query: AlertQuery, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/alerts/list/{user_id}")
+async def list_alerts(user_id: str, db: Session = Depends(get_db)):
+    """
+    Get all alerts for a specific user.
+    """
+    from app.core.security import validate_user_id
+
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    try:
+        alerts = (
+            db.query(Alert)
+            .filter(Alert.user_id == validated_user_id)
+            .order_by(Alert.created_at.desc())
+            .all()
+        )
+
+        alert_list = []
+        for alert in alerts:
+            alert_list.append(
+                {
+                    "id": alert.id,
+                    "symbol": alert.symbol,
+                    "indicator": alert.indicator,
+                    "operator": alert.operator,
+                    "threshold": alert.threshold,
+                    "status": alert.status,
+                    "created_at": alert.created_at.isoformat()
+                    if alert.created_at
+                    else None,
+                }
+            )
+
+        return {"success": True, "alerts": alert_list, "count": len(alert_list)}
+    except Exception as e:
+        logging.error(f"List alerts error: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Could not fetch alerts")
+
+
+@app.delete("/api/alerts/delete/{alert_id}")
+async def delete_alert(alert_id: int, user_id: str, db: Session = Depends(get_db)):
+    """
+    Delete a specific alert by ID.
+    """
+    from app.core.security import validate_user_id
+
+    # SECURITY: Validate user_id
+    is_valid, validated_user_id = validate_user_id(user_id)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid user ID")
+
+    try:
+        alert = (
+            db.query(Alert)
+            .filter(Alert.id == alert_id, Alert.user_id == validated_user_id)
+            .first()
+        )
+
+        if not alert:
+            raise HTTPException(
+                status_code=404,
+                detail="Alert not found or you don't have permission to delete it",
+            )
+
+        db.delete(alert)
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"🗑️ Alert for {alert.symbol} deleted successfully!",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Delete alert error: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Could not delete alert")
+
+
 @app.get("/api/fundamentals/{symbol}")
 async def get_fundamentals(symbol: str):
     """Returns fundamental data for a stock."""
     from app.core.security import validate_symbol
-    
+
     clean_symbol = symbol.upper().replace(" ", "")
-    
+
     if not validate_symbol(clean_symbol):
         raise HTTPException(status_code=400, detail="Invalid symbol")
-        
+
     data = market_data.get_fundamentals(clean_symbol)
     if data:
         return {"success": True, "data": data}
@@ -1433,12 +1818,12 @@ async def get_fundamentals(symbol: str):
 async def analyze_stock(symbol: str):
     """Returns technical analysis of a stock."""
     from app.core.security import validate_symbol
-    
+
     clean_symbol = symbol.upper().replace(" ", "")
-    
+
     if not validate_symbol(clean_symbol):
         raise HTTPException(status_code=400, detail="Invalid symbol")
-        
+
     data = market_data.get_analysis(clean_symbol)
     if data:
         return {"success": True, "data": data}
@@ -1449,7 +1834,7 @@ async def analyze_stock(symbol: str):
 async def get_chart(symbol: str):
     """Returns a base64 encoded chart image."""
     from app.core.charting import generate_stock_chart
-    
+
     clean_symbol = symbol.upper().replace(" ", "")
     chart_base64 = generate_stock_chart(clean_symbol)
     if chart_base64:

@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).parent.parent / ".env")  # Load from root .env
 
 import logging
@@ -57,9 +58,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Show keyboard immediately (don't wait for backend)
     keyboard = [
         [KeyboardButton("🔍 Screener"), KeyboardButton("💼 Portfolio")],
-        [KeyboardButton("📊 Stock Tools"), KeyboardButton("💎 My Plan")],
-        [KeyboardButton("📖 Readme"), KeyboardButton("📞 Contact Support")],
-        [KeyboardButton("🔒 Privacy Policy")],
+        [KeyboardButton("📊 Stock Tools"), KeyboardButton("🔔 Alerts")],
+        [KeyboardButton("💎 My Plan"), KeyboardButton("📖 Readme")],
+        [KeyboardButton("📞 Contact Support"), KeyboardButton("🔒 Privacy Policy")],
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -209,6 +210,22 @@ async def show_plan_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await target.reply_text("❌ Connection Error.")
 
 
+async def show_alerts_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display the Alerts submenu."""
+    keyboard = [["➕ Create Alert", "📋 My Alerts"], ["🗑️ Delete Alert", "🏠 Main Menu"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    target = update.message if update.message else update.effective_message
+    await target.reply_text(
+        "🔔 <b>Alert Management</b>\n\n"
+        "• <b>➕ Create Alert:</b> Set price or indicator alerts\n"
+        "• <b>📋 My Alerts:</b> View all your active alerts\n"
+        "• <b>🗑️ Delete Alert:</b> Remove an existing alert\n\n"
+        "Type naturally like: 'Alert me if TCS > 3000'",
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+    )
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text messages including Menu buttons and Natural Language."""
     text = update.message.text
@@ -264,15 +281,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             USER_STATES.pop(user_id, None)
             await start(update, context)
             return
-        
+
         category = "ISSUE" if current_state == "WAITING_FOR_ISSUE" else "FEEDBACK"
-        
+
         async with aiohttp.ClientSession() as session:
             try:
                 payload = {
                     "user_id": str(user_id),
                     "category": category,
-                    "message": text
+                    "message": text,
                 }
                 async with session.post(
                     f"{BACKEND_URL}/api/support/submit",
@@ -281,15 +298,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ) as resp:
                     if resp.status == 200:
                         await update.message.reply_text(
-                            f"✅ <b>{category.title()} Submitted!</b>\nThank you for reaching out. We will review it shortly.", 
-                            parse_mode="HTML"
+                            f"✅ <b>{category.title()} Submitted!</b>\nThank you for reaching out. We will review it shortly.",
+                            parse_mode="HTML",
                         )
                     else:
-                        await update.message.reply_text("❌ Failed to submit. Please try again later.")
+                        await update.message.reply_text(
+                            "❌ Failed to submit. Please try again later."
+                        )
             except Exception as e:
                 logger.error(f"Support Submit Error: {e}")
                 await update.message.reply_text("❌ Connection Error.")
-        
+
         USER_STATES.pop(user_id, None)
         await start(update, context)
         return
@@ -392,64 +411,100 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- STOCK TOOLS STATE HANDLERS ---
     if current_state == "WAITING_FOR_CHART_SYMBOL":
         # Exit if any menu button is clicked
-        menu_buttons = ["🔍 screener", "💼 portfolio", "📊 stock tools", "💎 my plan", "📖 readme", "📞 contact support", "🔒 privacy policy"]
-        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"] or text.lower() in menu_buttons:
+        menu_buttons = [
+            "🔍 screener",
+            "💼 portfolio",
+            "📊 stock tools",
+            "💎 my plan",
+            "📖 readme",
+            "📞 contact support",
+            "🔒 privacy policy",
+        ]
+        if (
+            text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]
+            or text.lower() in menu_buttons
+        ):
             USER_STATES.pop(user_id, None)
             if text.lower() in menu_buttons:
                 # Let the menu handler process this
-                pass
+                return
             else:
                 await update.message.reply_text("❌ Cancelled.")
                 await start(update, context)
                 return
-        
+
         symbol = text.upper()
         # KEEP STATE: USER_STATES.pop(user_id, None)
-        status_msg = await update.message.reply_text(f"📊 Generating chart for {symbol}...\n(Type another symbol or 'Back' to exit)")
-        
+        status_msg = await update.message.reply_text(
+            f"📊 Generating chart for {symbol}...\n(Type another symbol or 'Back' to exit)"
+        )
+
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as resp:
+            async with session.get(
+                f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()
+            ) as resp:
                 chart_data = await resp.json()
-            
+
             if chart_data.get("success"):
                 import base64
+
                 image_data = base64.b64decode(chart_data["image"])
                 await update.message.reply_photo(
                     photo=image_data,
                     caption=f"📈 <b>{symbol}</b> - Price & Volume Chart\n\n👇 <i>Enter next symbol for Chart:</i>",
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 await status_msg.delete()
             else:
-                await status_msg.edit_text(f"❌ Could not generate chart for {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
+                await status_msg.edit_text(
+                    f"❌ Could not generate chart for {symbol}.\n👇 <i>Try another symbol:</i>",
+                    parse_mode="HTML",
+                )
         return
 
     if current_state == "WAITING_FOR_FUNDAMENTALS_SYMBOL":
         # Exit if any menu button is clicked
-        menu_buttons = ["🔍 screener", "💼 portfolio", "📊 stock tools", "💎 my plan", "📖 readme", "📞 contact support", "🔒 privacy policy"]
-        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"] or text.lower() in menu_buttons:
+        menu_buttons = [
+            "🔍 screener",
+            "💼 portfolio",
+            "📊 stock tools",
+            "💎 my plan",
+            "📖 readme",
+            "📞 contact support",
+            "🔒 privacy policy",
+        ]
+        if (
+            text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]
+            or text.lower() in menu_buttons
+        ):
             USER_STATES.pop(user_id, None)
             if text.lower() in menu_buttons:
                 # Let the menu handler process this
-                pass
+                return
             else:
                 await update.message.reply_text("❌ Cancelled.")
                 await start(update, context)
                 return
-        
+
         symbol = text.upper()
         # KEEP STATE: USER_STATES.pop(user_id, None)
-        status_msg = await update.message.reply_text(f"🔄 Fetching fundamentals for {symbol}...\n(Type another symbol or 'Back' to exit)")
-        
+        status_msg = await update.message.reply_text(
+            f"🔄 Fetching fundamentals for {symbol}...\n(Type another symbol or 'Back' to exit)"
+        )
+
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
+            async with session.get(
+                f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()
+            ) as resp:
                 quote_data = await resp.json()
-        
+
         # Call Backend API
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/fundamentals/{symbol}", headers=get_api_headers()) as resp:
+            async with session.get(
+                f"{BACKEND_URL}/api/fundamentals/{symbol}", headers=get_api_headers()
+            ) as resp:
                 data = await resp.json()
-        
+
         if data.get("success"):
             d = data.get("data", {})
             pe = d.get("pe_ratio")
@@ -457,7 +512,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             roe = d.get("roe")
             roe_str = f"{roe * 100:.2f}%" if roe else "N/A"
             mc = d.get("market_cap")
-            
+
             def fmt_mc(n):
                 if not n:
                     return "N/A"
@@ -466,13 +521,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if n >= 1e7:
                     return f"₹{n / 1e7:,.0f} Cr"
                 return f"₹{n:,.0f}"
-            
+
             mc_str = fmt_mc(mc)
             pb = d.get("pb_ratio")
             pb_str = f"{pb:.2f}" if pb else "N/A"
             div = d.get("dividend_yield")
             div_str = f"{div * 100:.2f}%" if div else "N/A"
-            
+
             msg = (
                 f"📊 <b>{symbol} Fundamentals</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
@@ -488,101 +543,228 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await status_msg.edit_text(msg, parse_mode="HTML")
         else:
-            await status_msg.edit_text(f"❌ Could not fetch fundamentals for {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
+            await status_msg.edit_text(
+                f"❌ Could not fetch fundamentals for {symbol}.\n👇 <i>Try another symbol:</i>",
+                parse_mode="HTML",
+            )
         return
 
     if current_state == "WAITING_FOR_ANALYSIS_SYMBOL":
         # Exit if any menu button is clicked
-        menu_buttons = ["🔍 screener", "💼 portfolio", "📊 stock tools", "💎 my plan", "📖 readme", "📞 contact support", "🔒 privacy policy"]
-        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"] or text.lower() in menu_buttons:
+        menu_buttons = [
+            "🔍 screener",
+            "💼 portfolio",
+            "📊 stock tools",
+            "💎 my plan",
+            "📖 readme",
+            "📞 contact support",
+            "🔒 privacy policy",
+        ]
+        if (
+            text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]
+            or text.lower() in menu_buttons
+        ):
             USER_STATES.pop(user_id, None)
             if text.lower() in menu_buttons:
                 # Let the menu handler process this
-                pass
+                return
             else:
                 await update.message.reply_text("❌ Cancelled.")
                 await start(update, context)
                 return
-        
+
         symbol = text.upper()
-        # KEEP STATE: USER_STATES.pop(user_id, None)
-        status_msg = await update.message.reply_text(f"🔄 Analyzing {symbol}...\n(Type another symbol or 'Back' to exit)")
-        
+        status_msg = await update.message.reply_text(
+            f"🔄 Analyzing {symbol}...\n(Type another symbol or 'Back' to exit)"
+        )
+
         async with aiohttp.ClientSession() as session:
-            async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
-                analysis_data = await resp.json()
-            
-            async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as chart_resp:
-                chart_data = await chart_resp.json()
-            
-            if analysis_data.get("success"):
-                d = analysis_data["data"]
-                trend_emoji = "🚀" if d["trend"] == "BULLISH" else "📉"
-                vol_emoji = "🔥" if "High" in d["vol_status"] or "Explosion" in d["vol_status"] else "📊"
-                
-                msg = (
-                    f"🔍 <b>Analysis: {d['symbol']}</b>\n"
-                    f"━━━━━━━━━━━━━━━━━━━\n"
-                    f"Price: <b>₹{d['price']}</b> ({d['change_percent']:+.2f}%)\n"
-                    f"Trend: <b>{d['trend']}</b> {trend_emoji}\n"
-                    f"MA 20: ₹{d['ma_20']}\n"
-                    f"Avg Vol (10d): {d['avg_volume']:,}\n"
-                    f"Vol Today: <b>{d['volume']:,}</b>\n"
-                    f"Status: {d['vol_status']} {vol_emoji}\n"
-                    f"━━━━━━━━━━━━━━━━━━━"
-                )
-                
-                if chart_data.get("success"):
-                    import base64
-                    image_data = base64.b64decode(chart_data["image"])
-                    await update.message.reply_photo(
-                        photo=image_data,
-                        caption=msg + "\n\n👇 <i>Enter next symbol for Analysis:</i>",
-                        parse_mode="HTML"
-                    )
-                    await status_msg.delete()
+            # Use SQL endpoint first (fast, no yfinance call)
+            stock_resp = await session.get(
+                f"{BACKEND_URL}/api/sql/stock/{symbol}", headers=get_api_headers()
+            )
+            stock_data = await stock_resp.json()
+
+            if stock_data.get("success"):
+                data = stock_data["data"]
+                price = data.get("price", {})
+                fund = data.get("fundamentals", {})
+
+                ltp = price.get("ltp", 0) or 0
+                change = price.get("change_pct", 0) or 0
+                volume = price.get("volume", 0) or 0
+                high = price.get("high", 0) or 0
+                low = price.get("low", 0) or 0
+
+                # Calculate basic trend
+                trend = "BULLISH" if ltp >= (high + low) / 2 else "BEARISH"
+                trend_emoji = "🚀" if trend == "BULLISH" else "📉"
+
+                # Volume status
+                avg_vol = fund.get("avg_volume") or volume
+                vol_ratio = volume / avg_vol if avg_vol > 0 else 1
+                if vol_ratio > 2:
+                    vol_status = "Volume Explosion! (2x+)"
+                elif vol_ratio > 1.5:
+                    vol_status = "High Volume (1.5x)"
                 else:
-                    await status_msg.edit_text(msg + "\n\n👇 <i>Enter next symbol for Analysis:</i>", parse_mode="HTML")
+                    vol_status = "Normal Volume"
+                vol_emoji = "🔥" if vol_ratio > 1.5 else "📊"
+
+                # Format market cap
+                mcap = fund.get("market_cap")
+                if mcap:
+                    if mcap >= 1000000000000:
+                        mcap_str = f"₹{mcap / 1000000000000:.1f}T"
+                    elif mcap >= 1000000000:
+                        mcap_str = f"₹{mcap / 1000000000:.1f}B"
+                    else:
+                        mcap_str = f"₹{mcap / 10000000:.0f}M"
+                else:
+                    mcap_str = "N/A"
+
+                # Format fundamentals
+                pe = fund.get("pe_ratio")
+                pe_str = f"{pe:.1f}" if pe else "N/A"
+
+                roe = fund.get("roe")
+                roe_str = f"{roe:.1f}%" if roe else "N/A"
+
+                msg = (
+                    f"🔍 <b>{data['symbol']}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"💰 Price: <b>₹{ltp:,.2f}</b> ({change:+.2f}%)\n"
+                    f"📊 Vol: {volume:,} ({vol_ratio:.1f}x avg)\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"<b>📈 Fundamentals:</b>\n"
+                    f"• P/E: {pe_str} | ROE: {roe_str}\n"
+                    f"• MCap: {mcap_str}\n"
+                    f"• 52W: ₹{fund.get('low_52w', 0):.0f} - ₹{fund.get('high_52w', 0):.0f}\n"
+                    f"━━━━━━━━━━━━━━━━━━━\n"
+                    f"Trend: <b>{trend}</b> {trend_emoji}\n"
+                    f"Status: {vol_status} {vol_emoji}"
+                )
+
+                await status_msg.edit_text(
+                    msg + "\n\n👇 <i>Enter next symbol:</i>", parse_mode="HTML"
+                )
+
             else:
-                await status_msg.edit_text(f"❌ Could not analyze {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
+                # Fallback to original AI analysis if SQL fails
+                async with session.get(
+                    f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()
+                ) as resp:
+                    analysis_data = await resp.json()
+
+                if analysis_data.get("success"):
+                    d = analysis_data["data"]
+                    trend_emoji = "🚀" if d["trend"] == "BULLISH" else "📉"
+                    vol_emoji = (
+                        "🔥"
+                        if "High" in d["vol_status"] or "Explosion" in d["vol_status"]
+                        else "📊"
+                    )
+
+                    msg = (
+                        f"🔍 <b>Analysis: {d['symbol']}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━\n"
+                        f"Price: <b>₹{d['price']}</b> ({d['change_percent']:+.2f}%)\n"
+                        f"Trend: <b>{d['trend']}</b> {trend_emoji}\n"
+                        f"MA 20: ₹{d['ma_20']}\n"
+                        f"Avg Vol (10d): {d['avg_volume']:,}\n"
+                        f"Vol Today: <b>{d['volume']:,}</b>\n"
+                        f"Status: {d['vol_status']} {vol_emoji}\n"
+                        f"━━━━━━━━━━━━━━━━━━━"
+                    )
+
+                    # Try to get chart
+                    async with session.get(
+                        f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()
+                    ) as chart_resp:
+                        chart_data = await chart_resp.json()
+
+                    if chart_data.get("success"):
+                        import base64
+
+                        image_data = base64.b64decode(chart_data["image"])
+                        await update.message.reply_photo(
+                            photo=image_data,
+                            caption=msg + "\n\n👇 <i>Enter next symbol:</i>",
+                            parse_mode="HTML",
+                        )
+                        await status_msg.delete()
+                    else:
+                        await status_msg.edit_text(
+                            msg + "\n\n👇 <i>Enter next symbol:</i>", parse_mode="HTML"
+                        )
+                else:
+                    await status_msg.edit_text(
+                        f"❌ Could not analyze {symbol}.\n👇 <i>Try another symbol:</i>",
+                        parse_mode="HTML",
+                    )
         return
 
     if current_state == "WAITING_FOR_PRICE_SYMBOL":
         # Exit if any menu button or exit keyword is used
-        menu_buttons = ["🔍 screener", "💼 portfolio", "📊 stock tools", "💎 my plan", "📖 readme", "📞 contact support", "🔒 privacy policy"]
-        exit_keywords = ["back", "cancel", "exit", "main menu", "🏠 main menu", "menu", "chart", "fundamentals", "technical analysis", "price"]
+        menu_buttons = [
+            "🔍 screener",
+            "💼 portfolio",
+            "📊 stock tools",
+            "💎 my plan",
+            "📖 readme",
+            "📞 contact support",
+            "🔒 privacy policy",
+        ]
+        exit_keywords = [
+            "back",
+            "cancel",
+            "exit",
+            "main menu",
+            "🏠 main menu",
+            "menu",
+            "chart",
+            "fundamentals",
+            "technical analysis",
+            "price",
+        ]
         if text.lower() in exit_keywords or text.lower() in menu_buttons:
             USER_STATES.pop(user_id, None)
             if text.lower() in menu_buttons:
                 # Let the menu handler process this
-                pass
+                return
             else:
                 await update.message.reply_text("✅ Exited Price Check.")
                 await start(update, context)
                 return
 
         symbol = text.upper()
-        status_msg = await update.message.reply_text(f"💰 Checking price for {symbol}...\n(Type another symbol or 'Back' to exit)")
-        
+        status_msg = await update.message.reply_text(
+            f"💰 Checking price for {symbol}...\n(Type another symbol or 'Back' to exit)"
+        )
+
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
+                async with session.get(
+                    f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()
+                ) as resp:
                     res = await resp.json()
-            
+
             if res and res.get("success"):
                 q = res.get("data") or {}
                 # Ensure q is a dict
                 if not isinstance(q, dict):
                     logger.error(f"Invalid data received for {symbol}: {q}")
                     q = {}
-                
+
                 ltp = q.get("ltp", 0) or 0
-                close_price = q.get("close", 0) or ltp or 1  # Fallback to LTP or 1 to avoid div/0
+                close_price = (
+                    q.get("close", 0) or ltp or 1
+                )  # Fallback to LTP or 1 to avoid div/0
                 diff = ltp - close_price
                 pct = (diff / close_price) * 100
                 emoji = "🚀" if diff >= 0 else "🔻"
                 volume = q.get("volume", 0) or 0
-                
+
                 msg = (
                     f"{emoji} <b>{q.get('symbol', symbol)}</b>: ₹{ltp:,.2f}\n"
                     f"Change: {diff:+.2f} ({pct:+.2f}%)\n"
@@ -591,10 +773,65 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 await status_msg.edit_text(msg, parse_mode="HTML")
             else:
-                await status_msg.edit_text(f"❌ Quote not found for {symbol}.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
+                await status_msg.edit_text(
+                    f"❌ Quote not found for {symbol}.\n👇 <i>Try another symbol:</i>",
+                    parse_mode="HTML",
+                )
         except Exception as e:
             logger.error(f"Price Check Error: {e}")
-            await status_msg.edit_text(f"❌ Error fetching price for {symbol}.\n👇 <i>Try another symbol:</i>")
+            await status_msg.edit_text(
+                f"❌ Error fetching price for {symbol}.\n👇 <i>Try another symbol:</i>"
+            )
+        return
+
+    # --- DELETE ALERT STATE HANDLER ---
+    if current_state == "WAITING_FOR_DELETE_ALERT_ID":
+        # Check for exit keywords
+        if text.lower() in ["back", "cancel", "exit", "main menu", "🏠 main menu"]:
+            USER_STATES.pop(user_id, None)
+            await update.message.reply_text("✅ Cancelled.")
+            await show_alerts_menu(update, context)
+            return
+
+        # Try to parse alert ID
+        try:
+            alert_id = int(text.strip())
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Invalid Alert ID. Please enter a number (e.g., 123)\n"
+                "Or type 'cancel' to abort."
+            )
+            return
+
+        # Call backend to delete the alert
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.delete(
+                    f"{BACKEND_URL}/api/alerts/delete/{alert_id}?user_id={user_id}",
+                    headers=get_api_headers(),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        USER_STATES.pop(user_id, None)
+                        await update.message.reply_text(
+                            f"✅ {data.get('message', 'Alert deleted successfully!')}",
+                            parse_mode="HTML",
+                        )
+                        await show_alerts_menu(update, context)
+                    elif resp.status == 404:
+                        await update.message.reply_text(
+                            "❌ Alert not found or you don't have permission to delete it.\n"
+                            "Check 📋 My Alerts for valid IDs."
+                        )
+                    else:
+                        await update.message.reply_text(
+                            "❌ Failed to delete alert. Please try again."
+                        )
+            except Exception as e:
+                logger.error(f"Delete alert error: {e}")
+                await update.message.reply_text(
+                    "❌ Connection error. Please try again later."
+                )
         return
 
     # --- MENU HANDLERS ---
@@ -672,9 +909,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "🔔 Alerts":
-        await update.message.reply_text(
-            "🔔 <b>Alerts Mode</b>\nType: 'Alert me if TCS > 3000'", parse_mode="HTML"
-        )
+        await show_alerts_menu(update, context)
         return
 
     if text == "🔍 Screener":
@@ -689,43 +924,128 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Show Sub-Menu
         keyboard = [
             [KeyboardButton("🚀 Upgrade to Pro"), KeyboardButton("🎟️ Redeem Code")],
-            [KeyboardButton("🏠 Main Menu")]
+            [KeyboardButton("🏠 Main Menu")],
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("💎 <b>My Plan Menu</b>", reply_markup=reply_markup, parse_mode="HTML")
+        await update.message.reply_text(
+            "💎 <b>My Plan Menu</b>", reply_markup=reply_markup, parse_mode="HTML"
+        )
         await show_plan_status(update, context)
         return
-    
+
     if text == "📞 Contact Support":
         keyboard = [
             [KeyboardButton("⚠️ Raise Issue"), KeyboardButton("📝 Provide Feedback")],
-            [KeyboardButton("🏠 Main Menu")]
+            [KeyboardButton("🏠 Main Menu")],
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
             "📞 <b>Contact Support</b>\n\nHow can we help you today?",
             reply_markup=reply_markup,
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
-    
+
     if text == "⚠️ Raise Issue":
         USER_STATES[user_id] = "WAITING_FOR_ISSUE"
         await update.message.reply_text(
             "⚠️ <b>Raise an Issue</b>\n\nPlease describe the issue you are facing.\n"
             "<i>(Tip: Include your email address if you'd like a reply!)</i>",
             parse_mode="HTML",
-            reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Back")]], resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup(
+                [[KeyboardButton("🔙 Back")]], resize_keyboard=True
+            ),
         )
         return
-        
+
     if text == "📝 Provide Feedback":
         USER_STATES[user_id] = "WAITING_FOR_FEEDBACK"
         await update.message.reply_text(
             "📝 <b>Provide Feedback</b>\n\nWe'd love to hear your thoughts!\n"
             "<i>(Tip: Include your email address if you'd like a reply!)</i>",
             parse_mode="HTML",
-             reply_markup=ReplyKeyboardMarkup([[KeyboardButton("🔙 Back")]], resize_keyboard=True)
+            reply_markup=ReplyKeyboardMarkup(
+                [[KeyboardButton("🔙 Back")]], resize_keyboard=True
+            ),
+        )
+        return
+
+    # --- ALERTS SUBMENU HANDLERS ---
+    if text == "➕ Create Alert":
+        await update.message.reply_text(
+            "➕ <b>Create New Alert</b>\n\n"
+            "Type your alert in any of these formats:\n\n"
+            "<b>Price Alerts:</b>\n"
+            "• Alert me if TCS > 3000\n"
+            "• Notify when RELIANCE < 2500\n"
+            "• INFY above 1400\n\n"
+            "<b>Indicator Alerts:</b>\n"
+            "• Alert if TCS RSI > 70\n"
+            "• Notify when RELIANCE RSI < 30\n\n"
+            "Or simply type: <code>/alert SYMBOL > VALUE</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    if text == "📋 My Alerts":
+        # Fetch and display user's alerts
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(
+                    f"{BACKEND_URL}/api/alerts/list/{user_id}",
+                    headers=get_api_headers(),
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        alerts = data.get("alerts", [])
+
+                        if not alerts:
+                            await update.message.reply_text(
+                                "📭 <b>No Alerts Found</b>\n\n"
+                                "You don't have any alerts set up yet.\n"
+                                "Use <b>➕ Create Alert</b> to get started!",
+                                parse_mode="HTML",
+                            )
+                        else:
+                            msg = "📋 <b>Your Alerts</b>\n\n"
+                            for alert in alerts:
+                                operator_symbol = (
+                                    ">" if alert["operator"] == "gt" else "<"
+                                )
+                                status_emoji = (
+                                    "🟢" if alert["status"] == "ACTIVE" else "🔴"
+                                )
+                                msg += (
+                                    f"<b>ID:</b> <code>{alert['id']}</code>\n"
+                                    f"<b>{status_emoji} {alert['symbol']}</b> - "
+                                    f"{alert['indicator'].upper()} {operator_symbol} {alert['threshold']}\n"
+                                    f"━━━━━━━━━━━━━━━\n"
+                                )
+                            msg += "\n<i>To delete an alert, use 🗑️ Delete Alert</i>"
+                            await update.message.reply_text(msg, parse_mode="HTML")
+                    else:
+                        await update.message.reply_text(
+                            "❌ Failed to fetch your alerts. Please try again."
+                        )
+            except Exception as e:
+                logger.error(f"My Alerts error: {e}")
+                await update.message.reply_text(
+                    "❌ Connection error. Please try again later."
+                )
+        return
+
+    if text == "🗑️ Delete Alert":
+        USER_STATES[user_id] = "WAITING_FOR_DELETE_ALERT_ID"
+        await update.message.reply_text(
+            "🗑️ <b>Delete Alert</b>\n\n"
+            "Please enter the <b>Alert ID</b> you want to delete.\n"
+            "You can find the ID in 📋 <b>My Alerts</b>.\n\n"
+            "<i>Example: Type 123 to delete alert #123</i>\n\n"
+            "Type 'cancel' to abort.",
+            parse_mode="HTML",
+            reply_markup=ReplyKeyboardMarkup(
+                [[KeyboardButton("🔙 Back")]], resize_keyboard=True
+            ),
         )
         return
 
@@ -733,7 +1053,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [KeyboardButton("📈 Chart"), KeyboardButton("💎 Fundamentals")],
             [KeyboardButton("📊 Technical Analysis")],
-            [KeyboardButton("🏠 Main Menu")]
+            [KeyboardButton("🏠 Main Menu")],
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
@@ -743,7 +1063,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• <b>Fundamentals:</b> P/E, ROE, Market Cap, etc.\n"
             "• <b>Technical Analysis:</b> Volume trends, MA, signals",
             reply_markup=reply_markup,
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -774,7 +1094,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🎟️ <b>Redeem Access Code</b>\n\n"
             "Please enter your access code below:\n"
             "(or type 'Back' to cancel)",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -785,19 +1105,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             USER_STATES.pop(user_id, None)
             await update.message.reply_text("❌ Redemption cancelled.")
             return
-        
+
         # Treat text as code
         code = text.strip()
         # Reset state so we don't get stuck if logic fails
-        USER_STATES.pop(user_id, None) 
-        
+        USER_STATES.pop(user_id, None)
+
         # Reuse the logic below by mocking the command structure or ensuring logic flows
         # We'll just set text to "redeem <code>" and let the next block handle it?
-        # No, better to call a shared helper or just copy logic. 
+        # No, better to call a shared helper or just copy logic.
         # For simplicity in this edit, I will modify the next block to handle it.
-        # But wait, I can just modify the 'text' variable effectively? 
+        # But wait, I can just modify the 'text' variable effectively?
         # No, safer to just replicate the call or jump to it.
-        
+
         # Let's just override text to trigger the command handler below
         text = f"redeem {code}"
         # proceed to next block
@@ -1031,7 +1351,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "❓ Help":
-        await update.message.reply_text("❓ Help: Try: 'Alert if RELIANCE > 2500' or 'Bought 50 INFY at 1400'")
+        await update.message.reply_text(
+            "❓ Help: Try: 'Alert if RELIANCE > 2500' or 'Bought 50 INFY at 1400'"
+        )
         return
 
     # --- STOCK TOOLS HANDLERS ---
@@ -1040,7 +1362,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "📈 <b>Stock Chart</b>\n\n"
             "Enter the stock symbol (e.g., HDFC, TCS, RELIANCE):",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -1049,7 +1371,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "💎 <b>Stock Fundamentals</b>\n\n"
             "Enter the stock symbol (e.g., HDFC, TCS, RELIANCE):",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -1058,7 +1380,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "📊 <b>Technical Analysis</b>\n\n"
             "Enter the stock symbol (e.g., HDFC, TCS, RELIANCE):",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -1073,7 +1395,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         len(clean_text) < 30
         and len(clean_text.split()) <= 3
         and not any(c in text for c in ["/", ">", "<", "="])
-        and clean_text.lower() not in ["hi", "hello", "help", "start", "exit", "menu", "back"]
+        and clean_text.lower()
+        not in ["hi", "hello", "help", "start", "exit", "menu", "back"]
         and not clean_text.endswith("?")
     )
 
@@ -1082,20 +1405,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Offer Quick Tools
         keyboard = [
             [
-                InlineKeyboardButton("📈 Chart", callback_data=f"tool_chart_{potential_symbol}"),
-                InlineKeyboardButton("💎 Fundamentals", callback_data=f"tool_fund_{potential_symbol}")
+                InlineKeyboardButton(
+                    "📈 Chart", callback_data=f"tool_chart_{potential_symbol}"
+                ),
+                InlineKeyboardButton(
+                    "💎 Fundamentals", callback_data=f"tool_fund_{potential_symbol}"
+                ),
             ],
             [
-                InlineKeyboardButton("📊 Technical Analysis", callback_data=f"tool_ta_{potential_symbol}"),
-                InlineKeyboardButton("💰 Just Price", callback_data=f"tool_price_{potential_symbol}")
-            ]
+                InlineKeyboardButton(
+                    "📊 Technical Analysis", callback_data=f"tool_ta_{potential_symbol}"
+                ),
+                InlineKeyboardButton(
+                    "💰 Just Price", callback_data=f"tool_price_{potential_symbol}"
+                ),
+            ],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         msg_text = (
             f"🔎 <b>Is '{potential_symbol}' a stock?</b>\n\n"
             f"Select a tool to analyze it directly:"
         )
-        await update.message.reply_text(msg_text, reply_markup=reply_markup, parse_mode="HTML")
+        await update.message.reply_text(
+            msg_text, reply_markup=reply_markup, parse_mode="HTML"
+        )
         return
 
     # --- AI PROCESSING ---
@@ -1129,7 +1462,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         intent = result.get("intent")
 
         if status == "NEEDS_CLARIFICATION":
-            q_text = result.get('question') or "Could not understand request."
+            q_text = result.get("question") or "Could not understand request."
             await status_msg.edit_text(f"❓ {q_text}")
 
         elif status == "REJECTED":
@@ -1323,72 +1656,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif intent == "ANALYZE_STOCK":
             symbol = result.get("data", {}).get("symbol")
             if not symbol:
-                 await status_msg.edit_text("❓ Which stock?")
-            else:
-                 # Fetch Analysis
-                 async with aiohttp.ClientSession() as session:
-                     # 1. Get Text Analysis
-                     async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
-                         analysis_data = await resp.json()
-                     
-                     # 2. Get Chart (Image)
-                     async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as chart_resp:
-                         chart_data = await chart_resp.json()
-                     
-                     if analysis_data.get("success"):
-                         d = analysis_data["data"]
-                         
-                         trend_emoji = "🚀" if d["trend"] == "BULLISH" else "📉"
-                         vol_emoji = "🔥" if "High" in d["vol_status"] or "Explosion" in d["vol_status"] else "📊"
-                         
-                         msg = (
-                             f"🔍 <b>Analysis: {d['symbol']}</b>\n"
-                             f"━━━━━━━━━━━━━━━━━━━\n"
-                             f"Price: <b>₹{d['price']}</b> ({d['change_percent']:+.2f}%)\n"
-                             f"Trend: <b>{d['trend']}</b> {trend_emoji}\n"
-                             f"Avg Vol (10d): {d['avg_volume']:,}\n"
-                             f"Vol Today: <b>{d['volume']:,}</b>\n"
-                             f"Status: {d['vol_status']} {vol_emoji}\n"
-                             f"━━━━━━━━━━━━━━━━━━━"
-                         )
-                         
-                         # Send Chart if available
-                         if chart_data.get("success"):
-                             import base64
-                             image_data = base64.b64decode(chart_data["image"])
-                             await update.message.reply_photo(
-                                 photo=image_data,
-                                 caption=msg,
-                                 parse_mode="HTML"
-                             )
-                             await status_msg.delete() # Remove "Analysing..." message
-                         else:
-                             await status_msg.edit_text(msg, parse_mode="HTML")
-                     else:
-                         await status_msg.edit_text(f"❌ Could not analyze {symbol}.")
-                         
-        elif status == "ANALYZE_STOCK":
-            # Handle when backend returns status directly
-            symbol = result.get("symbol") or result.get("data", {}).get("symbol")
-            if not symbol:
                 await status_msg.edit_text("❓ Which stock?")
             else:
                 # Fetch Analysis
                 async with aiohttp.ClientSession() as session:
                     # 1. Get Text Analysis
-                    async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
+                    async with session.get(
+                        f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()
+                    ) as resp:
                         analysis_data = await resp.json()
-                    
+
                     # 2. Get Chart (Image)
-                    async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as chart_resp:
+                    async with session.get(
+                        f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()
+                    ) as chart_resp:
                         chart_data = await chart_resp.json()
-                    
+
                     if analysis_data.get("success"):
                         d = analysis_data["data"]
-                        
+
                         trend_emoji = "🚀" if d["trend"] == "BULLISH" else "📉"
-                        vol_emoji = "🔥" if "High" in d["vol_status"] or "Explosion" in d["vol_status"] else "📊"
-                        
+                        vol_emoji = (
+                            "🔥"
+                            if "High" in d["vol_status"]
+                            or "Explosion" in d["vol_status"]
+                            else "📊"
+                        )
+
                         msg = (
                             f"🔍 <b>Analysis: {d['symbol']}</b>\n"
                             f"━━━━━━━━━━━━━━━━━━━\n"
@@ -1399,22 +1693,77 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             f"Status: {d['vol_status']} {vol_emoji}\n"
                             f"━━━━━━━━━━━━━━━━━━━"
                         )
-                        
+
                         # Send Chart if available
                         if chart_data.get("success"):
                             import base64
+
                             image_data = base64.b64decode(chart_data["image"])
                             await update.message.reply_photo(
-                                photo=image_data,
-                                caption=msg,
-                                parse_mode="HTML"
+                                photo=image_data, caption=msg, parse_mode="HTML"
                             )
-                            await status_msg.delete() # Remove "Analysing..." message
+                            await status_msg.delete()  # Remove "Analysing..." message
                         else:
                             await status_msg.edit_text(msg, parse_mode="HTML")
                     else:
                         await status_msg.edit_text(f"❌ Could not analyze {symbol}.")
-                          
+
+        elif status == "ANALYZE_STOCK":
+            # Handle when backend returns status directly
+            symbol = result.get("symbol") or result.get("data", {}).get("symbol")
+            if not symbol:
+                await status_msg.edit_text("❓ Which stock?")
+            else:
+                # Fetch Analysis
+                async with aiohttp.ClientSession() as session:
+                    # 1. Get Text Analysis
+                    async with session.get(
+                        f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()
+                    ) as resp:
+                        analysis_data = await resp.json()
+
+                    # 2. Get Chart (Image)
+                    async with session.get(
+                        f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()
+                    ) as chart_resp:
+                        chart_data = await chart_resp.json()
+
+                    if analysis_data.get("success"):
+                        d = analysis_data["data"]
+
+                        trend_emoji = "🚀" if d["trend"] == "BULLISH" else "📉"
+                        vol_emoji = (
+                            "🔥"
+                            if "High" in d["vol_status"]
+                            or "Explosion" in d["vol_status"]
+                            else "📊"
+                        )
+
+                        msg = (
+                            f"🔍 <b>Analysis: {d['symbol']}</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━\n"
+                            f"Price: <b>₹{d['price']}</b> ({d['change_percent']:+.2f}%)\n"
+                            f"Trend: <b>{d['trend']}</b> {trend_emoji}\n"
+                            f"Avg Vol (10d): {d['avg_volume']:,}\n"
+                            f"Vol Today: <b>{d['volume']:,}</b>\n"
+                            f"Status: {d['vol_status']} {vol_emoji}\n"
+                            f"━━━━━━━━━━━━━━━━━━━"
+                        )
+
+                        # Send Chart if available
+                        if chart_data.get("success"):
+                            import base64
+
+                            image_data = base64.b64decode(chart_data["image"])
+                            await update.message.reply_photo(
+                                photo=image_data, caption=msg, parse_mode="HTML"
+                            )
+                            await status_msg.delete()  # Remove "Analysing..." message
+                        else:
+                            await status_msg.edit_text(msg, parse_mode="HTML")
+                    else:
+                        await status_msg.edit_text(f"❌ Could not analyze {symbol}.")
+
         elif status == "ERROR":
             await status_msg.edit_text(
                 f"❌ {result.get('message', 'An error occurred.')}"
@@ -1527,38 +1876,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await query.answer("Delete Failed", show_alert=True)
 
-
     elif data.startswith("tool_"):
         # tool_chart_SYMBOL, tool_fund_SYMBOL, tool_ta_SYMBOL, tool_price_SYMBOL
         parts = data.split("_", 2)
         action = parts[1]
         symbol = parts[2]
-        
+
         user_id = update.effective_user.id
-        
+
         if action == "chart":
             await query.message.reply_text(f"📊 Generating chart for {symbol}...")
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()) as resp:
+                async with session.get(
+                    f"{BACKEND_URL}/api/chart/{symbol}", headers=get_api_headers()
+                ) as resp:
                     chart_data = await resp.json()
-                
+
                 if chart_data.get("success"):
                     import base64
+
                     image_data = base64.b64decode(chart_data["image"])
                     await query.message.reply_photo(
                         photo=image_data,
                         caption=f"📈 <b>{symbol}</b> - Price & Volume Chart",
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 else:
-                    await query.message.reply_text(f"❌ Could not generate chart for {symbol}.")
-                    
+                    await query.message.reply_text(
+                        f"❌ Could not generate chart for {symbol}."
+                    )
+
         elif action == "fund":
             await query.message.reply_text(f"🔄 Fetching fundamentals for {symbol}...")
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BACKEND_URL}/api/fundamentals/{symbol}", headers=get_api_headers()) as resp:
+                async with session.get(
+                    f"{BACKEND_URL}/api/fundamentals/{symbol}",
+                    headers=get_api_headers(),
+                ) as resp:
                     data = await resp.json()
-            
+
             if data.get("success"):
                 d = data.get("data", {})
                 pe = d.get("pe_ratio")
@@ -1566,11 +1922,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 roe = d.get("roe")
                 roe_str = f"{roe * 100:.2f}%" if roe else "N/A"
                 mc = d.get("market_cap")
+
                 def fmt_mc(n):
-                    if not n: return "N/A"
-                    if n >= 1e7: return f"₹{n / 1e7:,.0f} Cr"
+                    if not n:
+                        return "N/A"
+                    if n >= 1e7:
+                        return f"₹{n / 1e7:,.0f} Cr"
                     return f"₹{n:,.0f}"
-                
+
                 msg = (
                     f"📊 <b>{symbol} Fundamentals</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━\n"
@@ -1583,14 +1942,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 await query.message.reply_text(msg, parse_mode="HTML")
             else:
-                await query.message.reply_text(f"❌ Could not fetch fundamentals for {symbol}.")
+                await query.message.reply_text(
+                    f"❌ Could not fetch fundamentals for {symbol}."
+                )
 
         elif action == "ta":
             await query.message.reply_text(f"🔄 Analyzing {symbol}...")
             async with aiohttp.ClientSession() as session:
-                async with session.get(f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()) as resp:
+                async with session.get(
+                    f"{BACKEND_URL}/api/analyze/{symbol}", headers=get_api_headers()
+                ) as resp:
                     analysis = await resp.json()
-                
+
                 if analysis.get("success"):
                     d = analysis["data"]
                     trend = "🚀" if d["trend"] == "BULLISH" else "📉"
@@ -1605,29 +1968,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await query.message.reply_text(msg, parse_mode="HTML")
                 else:
                     await query.message.reply_text(f"❌ Could not analyze {symbol}.")
-        
+
         elif action == "price":
-             # Trigger price check logic AND set state
-             USER_STATES[user_id] = "WAITING_FOR_PRICE_SYMBOL"
-             await query.message.reply_text(f"💰 Checking price for {symbol}...\n(Type another symbol or 'Back' to exit)")
-             
-             try:
-                 async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()) as resp:
+            # Trigger price check logic AND set state
+            USER_STATES[user_id] = "WAITING_FOR_PRICE_SYMBOL"
+            await query.message.reply_text(
+                f"💰 Checking price for {symbol}...\n(Type another symbol or 'Back' to exit)"
+            )
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(
+                        f"{BACKEND_URL}/api/quote/{symbol}", headers=get_api_headers()
+                    ) as resp:
                         res = await resp.json()
-                        
-                 if res and res.get("success"):
+
+                if res and res.get("success"):
                     q = res.get("data") or {}
                     if not isinstance(q, dict):
                         q = {}
-                        
+
                     ltp = q.get("ltp", 0) or 0
                     close_price = q.get("close", 0) or ltp or 1
                     diff = ltp - close_price
                     pct = (diff / close_price) * 100
                     emoji = "🚀" if diff >= 0 else "🔻"
                     volume = q.get("volume", 0) or 0
-                    
+
                     msg = (
                         f"{emoji} <b>{q.get('symbol', symbol)}</b>: ₹{ltp:,.2f}\n"
                         f"Change: {diff:+.2f} ({pct:+.2f}%)\n"
@@ -1635,9 +2002,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"👇 <i>Enter next symbol for Price:</i>"
                     )
                     await query.message.reply_text(msg, parse_mode="HTML")
-                 else:
-                    await query.message.reply_text(f"❌ Quote not found.\n👇 <i>Try another symbol:</i>", parse_mode="HTML")
-             except Exception as e:
+                else:
+                    await query.message.reply_text(
+                        f"❌ Quote not found.\n👇 <i>Try another symbol:</i>",
+                        parse_mode="HTML",
+                    )
+            except Exception as e:
                 logger.error(f"Price Button Error: {e}")
                 await query.message.reply_text(f"❌ Error fetching price.")
 
