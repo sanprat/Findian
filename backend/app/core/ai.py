@@ -4,6 +4,8 @@ import os
 import logging
 import time
 from typing import Dict, Any
+from app.core.rag import rag_service
+from app.core.tools import tavily_client
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +166,7 @@ class AIAlertInterpreter:
 
 INTENTS: CHECK_PRICE, CREATE_ALERT, ADD_PORTFOLIO, SELL_PORTFOLIO,
 VIEW_PORTFOLIO, DELETE_PORTFOLIO, MARKET_INFO, CHECK_FUNDAMENTALS,
-ANALYZE_STOCK
+ANALYZE_STOCK, EDUCATION, NEWS
 
 JSON:
 CHECK_PRICE: {"intent":"CHECK_PRICE","status":"CONFIRMED","data":{"symbol":"TICKER"}}
@@ -176,6 +178,8 @@ DELETE_PORTFOLIO: {"intent":"DELETE_PORTFOLIO","status":"CONFIRMED","data":{"sym
 MARKET_INFO: {"intent":"MARKET_INFO","status":"MARKET_INFO","data":{"answer":"Concise answer string here."}}
 CHECK_FUNDAMENTALS: {"intent":"CHECK_FUNDAMENTALS","status":"CONFIRMED","data":{"symbol":"TICKER"}}
 ANALYZE_STOCK: {"intent":"ANALYZE_STOCK","status":"CONFIRMED","data":{"symbol":"TICKER"}}
+EDUCATION: {"intent":"EDUCATION","status":"CONFIRMED","data":{"topic":"RSI"}}
+NEWS: {"intent":"NEWS","status":"CONFIRMED","data":{"query":"Stock Name or Topic"}}
 NEEDS_CLARIFICATION: {"status":"NEEDS_CLARIFICATION","question":"Which stock?"}
 REJECTED: {"status":"REJECTED","message":"I cannot provide investment advice."}
 
@@ -189,7 +193,8 @@ CRITICAL: If user asks to "find stocks", "show stocks", "list stocks",
 "stocks with [criteria]" (MULTIPLE stocks matching criteria), tell them to use
 the Screener menu. Return: {"status":"MARKET_INFO","data":{"answer":"To find
 multiple stocks, please use the 🔍 Screener menu and select 'Custom AI'."}}
-IMPORTANT: If asked "Why did [stock] move?" or "Reason for change", DO NOT invent news. Explain that you don't have live news feed, but list general reasons for such moves (earnings, sector trends, etc.).
+IMPORTANT: If asked "Why did [stock] move?" or "Reason for change", DO NOT invent news. Return 'NEWS' intent.
+IMPORTANT: If asked about definitions (What is RSI? What is P/E?), Return 'EDUCATION' intent.
 
 QUERY EXAMPLES:
 1. "What is HDFC price?" → CHECK_PRICE
@@ -204,10 +209,10 @@ QUERY EXAMPLES:
 10. "Show my portfolio" → VIEW_PORTFOLIO
 11. "Alert if Reliance > 2500" → CREATE_ALERT
 12. "Notify when INFY < 1400" → CREATE_ALERT
-13. "What is P/E ratio?" → MARKET_INFO (explain concept)
-14. "How does RSI work?" → MARKET_INFO (explain concept)
-15. "What is breakout?" → MARKET_INFO (explain concept)
-16. "Why did HDFC fall today?" → MARKET_INFO (general reasons, no news)
+13. "What is P/E ratio?" → EDUCATION
+14. "How does RSI work?" → EDUCATION
+15. "What is breakout?" → EDUCATION
+16. "Why did HDFC fall today?" → NEWS
 17. "HDFC fundamentals" → CHECK_FUNDAMENTALS
 18. "Show PE ratio of TCS" → CHECK_FUNDAMENTALS
 19. "Find stocks with high volume" → Redirect to Screener
@@ -218,8 +223,8 @@ QUERY EXAMPLES:
 24. "What is RIL price?" → CHECK_PRICE with symbol=RELIANCE (alias conversion)
 25. "Context: User previously looked at HDFC.
 Query: What about fundamentals?" → CHECK_FUNDAMENTALS with symbol=HDFC (context handling)
-26. "What should I buy tomorrow?" → REJECTED (investment advice - future prediction)
-27. "Show me the best stocks to buy" → REJECTED (investment advice - recommendations)
+26. "News on Reliance" → NEWS
+27. "Latest market news" → NEWS
 
 STRICT CONSTRAINT: You are a STOCK MARKET ASSISTANT ONLY. If the user asks about ANYTHING not related to stocks, markets, finance, trading, or investing, you MUST respond with:
 {"status":"REJECTED","message":"Sorry, I don't have that information. I only assist with stock market queries."
@@ -234,7 +239,35 @@ STRICT CONSTRAINT: You are a STOCK MARKET ASSISTANT ONLY. If the user asks about
 
         ]
         
-        return await self._call_with_fallback(messages)
+        result = await self._call_with_fallback(messages)
+
+        # --- NEW: Intercept intents for RAG/Tavily ---
+        intent = result.get("intent")
+        
+        if intent == "EDUCATION":
+             topic = result.get("data", {}).get("topic", query)
+             # Fallback to query if topic missing
+             answer = rag_service.query(topic)
+             if not answer:
+                 answer = "I couldn't find specific details in my knowledge base, but I can check live sources if you ask for news."
+             
+             return {
+                 "success": True, 
+                 "status": "MARKET_INFO", 
+                 "data": {"answer": f"📚 **Education:**\n{answer}"}
+             }
+
+        if intent == "NEWS":
+             search_query = result.get("data", {}).get("query", query)
+             news_result = tavily_client.search_news(search_query)
+             
+             return {
+                 "success": True, 
+                 "status": "MARKET_INFO", 
+                 "data": {"answer": f"📰 **Latest News:**\n{news_result}"}
+             }
+             
+        return result
 
     async def parse_screener_query(self, query: str) -> Dict[str, Any]:
         """

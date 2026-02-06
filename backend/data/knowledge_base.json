@@ -1,0 +1,57 @@
+[
+    {
+        "term": "RSI (Relative Strength Index)",
+        "definition": "The Relative Strength Index (RSI) is a momentum indicator used in technical analysis that measures the magnitude of recent price changes to evaluate overbought or oversold conditions in the price of a stock or other asset. The RSI is displayed as an oscillator (a line graph that moves between two extremes) and can have a reading from 0 to 100.",
+        "category": "Technical Indicator"
+    },
+    {
+        "term": "MACD (Moving Average Convergence Divergence)",
+        "definition": "Moving Average Convergence Divergence (MACD) is a trend-following momentum indicator that shows the relationship between two moving averages of a security's price. The MACD is calculated by subtracting the 26-period Exponential Moving Average (EMA) from the 12-period EMA.",
+        "category": "Technical Indicator"
+    },
+    {
+        "term": "P/E Ratio (Price-to-Earnings Ratio)",
+        "definition": "The Price-to-Earnings (P/E) ratio represents the relationship between a company's stock price and its earnings per share (EPS). It is a popular valuation metric used by investors to determine if a stock is overvalued or undervalued relative to its earnings.",
+        "category": "Fundamental Analysis"
+    },
+    {
+        "term": "Bullish",
+        "definition": "Bullish refers to a sentiment or market condition where prices are rising or are expected to rise. An investor who is 'bullish' expects the price of a security to go up.",
+        "category": "Market Jargon"
+    },
+    {
+        "term": "Bearish",
+        "definition": "Bearish refers to a sentiment or market condition where prices are falling or are expected to fall. An investor who is 'bearish' expects the price of a security to go down.",
+        "category": "Market Jargon"
+    },
+    {
+        "term": "Short Selling",
+        "definition": "Short selling is an investment or trading strategy that speculates on the decline in a stock or other security's price. It involves borrowing shares of a stock and selling them, with the intent of buying them back later at a lower price to return to the lender.",
+        "category": "Trading Strategy"
+    },
+    {
+        "term": "Market Capitalization (Market Cap)",
+        "definition": "Market Capitalization refers to the total dollar market value of a company's outstanding shares of stock. It is calculated by multiplying the total number of a company's outstanding shares by the current market price of one share.",
+        "category": "Fundamental Analysis"
+    },
+    {
+        "term": "EPS (Earnings Per Share)",
+        "definition": "Earnings Per Share (EPS) is calculated as a company's profit divided by the outstanding shares of its common stock. The resulting number serves as an indicator of a company's profitability.",
+        "category": "Fundamental Analysis"
+    },
+    {
+        "term": "ROCE (Return on Capital Employed)",
+        "definition": "Return on Capital Employed (ROCE) is a financial ratio that can be used in assessing a company's profitability and capital efficiency. In other words, the ratio can help to understand how well a company is generating profit from its capital. The ROCE ratio is calculated by dividing net operating profit (or EBIT) by capital employed.",
+        "category": "Fundamental Analysis"
+    },
+    {
+        "term": "Options",
+        "definition": "Options are financial derivatives that give buyers the right, but not the obligation, to buy or sell an underlying asset at an agreed-upon price and date. Call options are for buying, and put options are for selling.",
+        "category": "Derivatives"
+    },
+    {
+        "term": "Futures",
+        "definition": "Futures are derivative financial contracts that obligate the parties to transact an asset at a predetermined future date and price. The buyer must purchase or the seller must sell the asset at the set price, regardless of the current market price at the expiration date.",
+        "category": "Derivatives"
+    }
+]
