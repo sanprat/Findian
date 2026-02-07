@@ -109,9 +109,10 @@ async def show_screener_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     target = update.message if update.message else update.effective_message
     await target.reply_text(
-        "🔍 <b>Market Screener</b>\nFind stocks using technicals or AI:\n\n"
+        "🔍 <b>Market Intelligence & Screener</b>\n"
+        "Analyze stocks or learn market concepts using AI:\n\n"
         "• <b>Pre-built:</b> Popular scans (Breakouts, Volume)\n"
-        "• <b>Custom AI:</b> Type 'Stocks near support'...\n"
+        "• <b>Custom AI:</b> Screeners, Market News & Education\n"
         "• <b>Saved:</b> Run your favorite scans",
         reply_markup=reply_markup,
         parse_mode="HTML",
@@ -1223,19 +1224,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Mini Disclaimer / Info Block
         info_msg = (
-            "🤖 <b>AI Custom Scanner</b>\n"
+            "🤖 <b>AI Market Assistant</b>\n"
             "┌─────────────────────────────────────┐\n"
-            "│ 📋 <b>Important Information</b>            │\n"
+            "│ 📋 <b>How I can help you:</b>              │\n"
             "│                                     │\n"
-            "│ This bot provides alerts and tools  │\n"
-            "│ based on <b>YOUR</b> criteria. We don't    │\n"
-            "│ advise what to buy or sell.         │\n"
-            "│                                     │\n"
-            "│ You are responsible for your own    │\n"
-            "│ investment decisions.               │\n"
+            "│ 1. <b>Screener:</b> 'RSI &lt; 30 and Vol &gt; 1.5x'│\n"
+            "│ 2. <b>News:</b> 'News for TCS in last 3 days'│\n"
+            "│ 3. <b>Education:</b> 'What is a Breakout?'  │\n"
             "└─────────────────────────────────────┘\n\n"
-            "I am listening! Type your criteria:\n"
-            "Examples:\n• 'RSI &lt; 30 and Price &gt; MA50'\n• 'Stocks near 52W high with volume'"
+            "<i>I provide data-driven insights, not financial advice.</i>\n\n"
+            "<b>What would you like to know?</b>"
         )
         await update.message.reply_text(info_msg, parse_mode="HTML")
         return

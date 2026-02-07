@@ -1,10 +1,7 @@
 import unittest
 import os
 import sys
-from unittest.mock import MagicMock
-
-# Mock leann module before importing rag
-sys.modules['leann'] = MagicMock()
+from unittest.mock import MagicMock, patch
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -14,28 +11,39 @@ from backend.app.core.rag import RAGService
 class TestRAGService(unittest.TestCase):
     def setUp(self):
         self.test_data = "backend/tests/test_knowledge.json"
-        self.test_index = "backend/tests/test_education.leann"
+        self.test_persist = "backend/tests/test_chroma_db"
         
         # Create dummy knowledge base
+        import json
         with open(self.test_data, "w") as f:
-            f.write('[{"term": "TestTerm", "definition": "This is a test definition.", "category": "Test"}]')
+            json.dump([
+                {"term": "TestTerm", "definition": "This is a test definition.", "category": "Test"}
+            ], f)
             
-        self.rag = RAGService(data_path=self.test_data, index_path=self.test_index)
+        # Mock CHUTES_API_TOKEN
+        os.environ["CHUTES_API_TOKEN"] = "test_token"
+        
+        self.rag = RAGService(data_path=self.test_data, persist_dir=self.test_persist)
 
     def tearDown(self):
         if os.path.exists(self.test_data):
             os.remove(self.test_data)
-        # Clean up leann index if it creates a file/folder
-        # Leann behavior unknown, assuming file for now
-        if os.path.exists(self.test_index):
-            os.remove(self.test_index)
+            
+        import shutil
+        if os.path.exists(self.test_persist):
+            shutil.rmtree(self.test_persist)
 
-    def test_ingest_and_query(self):
-        # Configure Mock for search
-        # We need to access the mock we injected into sys.modules['leann']
-        import leann
-        mock_searcher = leann.LeannSearcher.return_value
-        mock_searcher.search.return_value = ["TestTerm (Test): This is a test definition."]
+    @patch("backend.app.core.rag.httpx.post")
+    def test_ingest_and_query(self, mock_post):
+        # Mock embeddings response from Chutes
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"embedding": [0.1] * 768}
+            ]
+        }
+        mock_post.return_value = mock_response
 
         # Test Ingestion
         try:
@@ -43,6 +51,9 @@ class TestRAGService(unittest.TestCase):
         except Exception as e:
             self.fail(f"Ingestion failed: {e}")
             
+        # Update mock for query (it calls get_embeddings again)
+        mock_post.return_value = mock_response
+
         # Test Query
         try:
             result = self.rag.query("TestTerm")

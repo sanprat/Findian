@@ -7,8 +7,11 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install
+# Copy requirements
 COPY requirements.txt .
+
+# Install Python dependencies
+# Install all packages from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code

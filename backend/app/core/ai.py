@@ -16,7 +16,8 @@ class AIAlertInterpreter:
         
         # Models requested by user (Prioritized)
         self.models = [
-            "GLM-4.6V-Flash",   # Primary
+            "GLM-4.7-Flash",     # Primary (latest)
+            "GLM-4.6V-Flash",   # Fallback
             "GLM-4.5-Flash"     # Fallback
         ]
         self.model = self.models[0] # Default to first
@@ -138,16 +139,25 @@ class AIAlertInterpreter:
                     content = result['choices'][0]['message']['content']
                     
                     # Extract JSON from markdown
-                    if "```" in content:
-                        json_start = content.find('{')
-                        json_end = content.rfind('}') + 1
-                        json_str = content[json_start:json_end]
-                    else:
-                        json_str = content
-                    
-                    elapsed = time.time() - start
-                    logger.info(f"🤖 AI ({model}) responded in {elapsed:.2f}s")
-                    return json.loads(json_str)
+                    try:
+                        if "```" in content:
+                            json_start = content.find('{')
+                            json_end = content.rfind('}') + 1
+                            json_str = content[json_start:json_end]
+                        else:
+                            json_str = content
+                        
+                        elapsed = time.time() - start
+                        logger.info(f"🤖 AI ({model}) responded in {elapsed:.2f}s")
+                        return json.loads(json_str)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        logger.warning(f"⚠️ Model {model} returned non-JSON content: {content[:100]}...")
+                        # If it's not JSON, let's treat it as a MARKET_INFO answer for better UX
+                        return {
+                            "intent": "MARKET_INFO",
+                            "status": "MARKET_INFO",
+                            "data": {"answer": content}
+                        }
 
             except Exception as e:
                 logger.warning(f"⚠️ Model {model} failed: {type(e).__name__}: {e}")
@@ -259,7 +269,7 @@ STRICT CONSTRAINT: You are a STOCK MARKET ASSISTANT ONLY. If the user asks about
 
         if intent == "NEWS":
              search_query = result.get("data", {}).get("query", query)
-             news_result = tavily_client.search_news(search_query)
+             news_result = await tavily_client.search_news(search_query)
              
              return {
                  "success": True, 

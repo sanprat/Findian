@@ -18,6 +18,12 @@ services:
       - DB_HOST=db
       - ADMIN_IDS=${ADMIN_IDS}
       - API_SECRET_KEY=${API_SECRET_KEY}
+      - TAVILY_PRIMARY_KEY=${TAVILY_PRIMARY_KEY}
+      - TAVILY_SECONDARY_KEY=${TAVILY_SECONDARY_KEY}
+      - TAVILY_THIRD_KEY=${TAVILY_THIRD_KEY}
+      - TAVILY_FOURTH_KEY=${TAVILY_FOURTH_KEY}
+      - TAVILY_FIFTH_KEY=${TAVILY_FIFTH_KEY}
+      - CHUTES_API_TOKEN=${CHUTES_API_TOKEN}
     depends_on:
       db:
         condition: service_healthy
